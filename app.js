@@ -51,29 +51,22 @@ function init() {
     el.cameraModel.appendChild(option);
   });
   applyModel(0);
-  enhanceControls();
   attachTooltips();
   bindEvents();
   rebuildPolygon();
   init3D();
   runOptimizer();
+  // Expose runOptimizer globally for settings modal
+  window.runOptimizer = runOptimizer;
 }
 
 function bindEvents() {
-  el.cameraModel.addEventListener("change", () => applyModel(Number(el.cameraModel.value)));
-  el.runOptimizer.addEventListener("click", runOptimizer);
-  el.importBoundary.addEventListener("click", () => el.boundaryFile.click());
-  el.boundaryFile.addEventListener("change", importBoundaryFile);
-  el.themeToggle.addEventListener("click", () => {
+  if (el.cameraModel) el.cameraModel.addEventListener("change", () => applyModel(Number(el.cameraModel.value)));
+  if (el.importBoundary) el.importBoundary.addEventListener("click", () => el.boundaryFile.click());
+  if (el.boundaryFile) el.boundaryFile.addEventListener("change", importBoundaryFile);
+  if (el.themeToggle) el.themeToggle.addEventListener("click", () => {
     document.body.classList.toggle("light");
     updateSceneEnvironment();
-  });
-  ["shapePreset", "pondLength", "pondWidth"].forEach((id) => {
-    el[id].addEventListener("change", () => {
-      if (id === "shapePreset") state.importedPolygon = null;
-      rebuildPolygon();
-      runOptimizer();
-    });
   });
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => {
@@ -83,15 +76,15 @@ function bindEvents() {
       renderHeatmap();
     });
   });
-  [el.exportJson, el.exportCsv, el.downloadReport].forEach((button) => button.addEventListener("click", handleExport));
+  [el.exportJson, el.exportCsv, el.downloadReport].forEach((button) => { if (button) button.addEventListener("click", handleExport); });
   ["timeOfDay", "sunAzimuth", "sunElevation", "moonIntensity"].forEach((id) => {
-    el[id].addEventListener("input", () => {
+    if (el[id]) el[id].addEventListener("input", () => {
       updateSceneEnvironment();
       updateTimeLabel();
     });
   });
   ["manualHeight", "manualYaw", "manualTilt", "manualFov", "manualRange", "manualArmLength"].forEach((id) => {
-    el[id].addEventListener("input", () => applyManualCameraEdit());
+    if (el[id]) el[id].addEventListener("input", () => applyManualCameraEdit());
   });
   window.addEventListener("resize", resize3D);
 }
@@ -1608,6 +1601,7 @@ function startApp(onboardPolygon) {
 }
 
 window.__onboardDone = startApp;
+window.runOptimizer = runOptimizer;
 
 // If onboarding is already hidden (page reload, etc.), run directly
 if (!document.getElementById('onboardingOverlay') || document.getElementById('onboardingOverlay').classList.contains('hidden')) {
