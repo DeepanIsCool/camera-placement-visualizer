@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pond Camera Coverage</title>
+    <meta name="description" content="3D pond camera placement optimizer for bird detection coverage planning" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2315283f'/%3E%3Cpath d='M12 35c11-13 28-15 43-5-10 12-27 14-43 5Z' fill='%2384d9e8'/%3E%3Ccircle cx='45' cy='29' r='3' fill='%23fff'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Material+Icons" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .material-icons { font-size: inherit; vertical-align: middle; line-height: 1; }
+      .material-icons.md-16 { font-size: 16px; }
+      .material-icons.md-18 { font-size: 18px; }
+      .material-icons.md-20 { font-size: 20px; }
+    </style>
+  </head>
+  <body>
+    <!-- ─── ONBOARDING OVERLAY ─── -->
+    <div id="onboardingOverlay" class="onboarding-overlay">
+      <div class="onboarding-card" id="onboardingCard">
+        <!-- Step indicator -->
+        <div style="display:flex;gap:6px;justify-content:center;margin-bottom:4px" id="stepDots">
+          <div class="step-dot active" data-step="1"></div>
+          <div class="step-line"></div>
+          <div class="step-dot" data-step="2"></div>
+        </div>
+
+        <!-- ── STEP 1: Pond Design ── -->
+        <div id="step1Content">
+          <div>
+            <h1>Design your pond</h1>
+            <p>Draw the pond outline, pick a shape preset, or import boundary points.</p>
+          </div>
+          <div class="draw-canvas-wrapper" id="drawCanvasWrapper">
+            <div class="draw-canvas-grid"></div>
+            <canvas id="drawCanvas" width="660" height="400"></canvas>
+          </div>
+          <div class="draw-toolbar">
+            <button class="btn ghost active-tool" id="toolPencil">Pencil</button>
+            <button class="btn ghost" id="toolRect">Rectangle</button>
+            <button class="btn ghost" id="toolOval">Oval</button>
+            <button class="btn ghost" id="toolIrregular">Irregular</button>
+            <button class="btn ghost" id="toolField">Field Sample</button>
+            <button class="btn ghost" id="toolImport">Import CSV</button>
+            <button class="btn ghost" id="toolClear">Clear</button>
+            <span style="margin-left:auto;font-size:10px;color:var(--muted)" id="drawPointCount">0 points</span>
+          </div>
+          <div class="grid two" style="gap:12px">
+            <label>Pond length (m)<input id="onboardLength" type="number" min="10" max="500" step="1" value="100" /></label>
+            <label>Pond width (m)<input id="onboardWidth" type="number" min="10" max="500" step="1" value="76" /></label>
+          </div>
+          <div class="onboarding-actions">
+            <button class="btn ghost" id="btnSkipOnboarding">Skip, use defaults</button>
+            <button class="btn primary" id="btnToStep2">Next: Configure Cameras →</button>
+          </div>
+        </div>
+
+        <!-- ── STEP 2: Camera Configuration ── -->
+        <div id="step2Content" style="display:none">
+          <div>
+            <h1>Configure cameras</h1>
+            <p>Select camera types and configure their specifications. The optimizer will determine the best mix, quantity, and placement.</p>
+          </div>
+          <div id="cameraTypesList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto"></div>
+          <button class="btn ghost" id="btnAddCameraType" style="width:100%;justify-content:center">+ Add Camera Type</button>
+          <div class="onboarding-actions">
+            <button class="btn ghost" id="btnBackToStep1">← Back</button>
+            <button class="btn primary" id="btnContinueOnboarding">Optimize & Continue →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── 3D CANVAS ─── -->
+    <div id="canvas-container"></div>
+    <input id="boundaryFile" type="file" accept=".csv,.txt" hidden />
+
+    <!-- Theme Toggle -->
+    <button id="themeToggle" class="theme-btn" type="button" title="Toggle theme"><span class="material-icons">dark_mode</span></button>
+
+    <!-- Loading Screen -->
+    <div id="loadingOverlay" class="onboarding-overlay hidden" style="z-index:200">
+      <div style="text-align:center;color:var(--ink)">
+        <div style="font-size:32px;margin-bottom:12px">Loading</div>
+        <p style="font-size:14px;font-weight:700" id="loadingText">Processing...</p>
+        <p style="font-size:10px;color:var(--muted);margin-top:4px">Optimizing camera placement</p>
+      </div>
+    </div>
+
+    <!-- Right Panel Toggle (tablet/mobile only) -->
+    <button id="panelToggle" class="panel-toggle-btn" title="Toggle results panel" style="display:none">☰</button>
+
+    <!-- ─── LEFT PANEL: Camera Array Manager ─── -->
+    <aside class="ui-panel left-panel" id="leftPanel" style="display:none" data-enhanced="true">
+      <header class="panel-header" style="padding:10px 14px">
+        <div>
+          <p class="eyebrow">Deployment Planner</p>
+          <h1><span class="material-icons md-18">videocam</span> Camera Array</h1>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button id="runOptimizer" class="btn primary" type="button">Optimize</button>
+          <button id="collapseLeftPanel" class="collapse-btn" title="Collapse">▼</button>
+        </div>
+      </header>
+
+      <!-- Camera Tabs -->
+      <div class="camera-tabs-container" id="cameraTabs"></div>
+
+      <!-- Panel Body -->
+      <div class="panel-body" id="leftPanelBody">
+        <!-- Pond Setup (collapsible) -->
+        <div class="section-box">
+          <div class="section-title" style="cursor:pointer" onclick="document.getElementById('pondSetupBody').classList.toggle('collapsed')">
+            <h2>Pond Setup</h2>
+            <button id="importBoundary" class="btn ghost" type="button" style="font-size:9px;min-height:24px">Import</button>
+          </div>
+          <div id="pondSetupBody">
+            <div class="slider-row">
+              <div class="slider-header"><span class="label">Shape</span></div>
+              <select id="shapePreset">
+                <option value="field">Field sample</option>
+                <option value="irregular">Irregular</option>
+                <option value="notched">Notched</option>
+                <option value="rectangle">Rectangle</option>
+              </select>
+            </div>
+            <div class="slider-row">
+              <div class="slider-header"><span class="label">Length (m)</span><span class="value" id="pondLengthVal">100</span></div>
+              <input type="range" id="pondLengthSlider" data-slider-for="pondLength" min="10" max="300" step="1" value="100" />
+              <input id="pondLength" type="number" min="10" step="1" value="100" style="display:none" data-enhanced="true" />
+            </div>
+            <div class="slider-row">
+              <div class="slider-header"><span class="label">Width (m)</span><span class="value" id="pondWidthVal">76</span></div>
+              <input type="range" id="pondWidthSlider" data-slider-for="pondWidth" min="10" max="200" step="1" value="76" />
+              <input id="pondWidth" type="number" min="10" step="1" value="76" style="display:none" data-enhanced="true" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Middle Pole Array (collapsible) -->
+        <div class="section-box">
+          <div class="section-title" style="cursor:pointer" onclick="document.getElementById('poleBody').classList.toggle('collapsed')">
+            <h2>Middle Pole Array</h2>
+            <label class="switch-row" style="margin:0;gap:5px;font-size:10px">
+              <input id="centerPoleEnabled" type="checkbox" checked style="width:14px;height:14px" />
+              Active
+            </label>
+          </div>
+          <div id="poleBody">
+            <div class="slider-row">
+              <div class="slider-header"><span class="label">Cameras</span><span class="value" id="centerPoleCountVal">5</span></div>
+              <input type="range" id="centerPoleCountSlider" data-slider-for="centerPoleCount" min="1" max="12" step="1" value="5" />
+              <input id="centerPoleCount" type="number" min="1" max="12" step="1" value="5" style="display:none" data-enhanced="true" />
+            </div>
+            <div class="slider-row">
+              <div class="slider-header"><span class="label">FOV</span><span class="value" id="centerPoleFovVal">78°</span></div>
+              <input type="range" id="centerPoleFovSlider" data-slider-for="centerPoleFov" min="15" max="160" step="1" value="78" />
+              <input id="centerPoleFov" type="number" min="15" max="160" step="1" value="78" style="display:none" data-enhanced="true" />
+            </div>
+            <div class="grid two">
+              <input id="centerPoleX" type="number" placeholder="Pole X (auto)" step="0.5" />
+              <input id="centerPoleY" type="number" placeholder="Pole Y (auto)" step="0.5" />
+              <input id="centerPoleOffset" type="number" min="0" max="359" step="1" placeholder="Rotation (auto)" />
+              <input id="centerPoleCost" type="number" min="0" step="100" value="620" placeholder="Unit cost" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Camera & Optics -->
+        <div class="section-box">
+          <div class="section-title"><h2>Camera & Optics</h2></div>
+          <div class="slider-row">
+            <select id="cameraModel"></select>
+          </div>
+          <div class="grid two">
+            <input id="resolutionW" type="number" min="320" step="1" value="3840" />
+            <input id="resolutionH" type="number" min="240" step="1" value="2160" />
+          </div>
+          <div class="slider-row" style="margin-top:6px">
+            <div class="slider-header"><span class="label">FOV</span><span class="value" id="fovInputVal">78°</span></div>
+            <input type="range" id="fovInputSlider" data-slider-for="fovInput" min="15" max="160" step="1" value="78" />
+            <input id="fovInput" type="number" min="15" max="160" step="1" value="78" style="display:none" data-enhanced="true" />
+          </div>
+          <div class="slider-row">
+            <div class="slider-header"><span class="label">Range</span><span class="value" id="rangeInputVal">48m</span></div>
+            <input type="range" id="rangeInputSlider" data-slider-for="rangeInput" min="2" step="1" value="48" max="180" />
+            <input id="rangeInput" type="number" min="2" step="1" value="48" style="display:none" data-enhanced="true" />
+          </div>
+        </div>
+
+        <!-- Mount Limits -->
+        <div class="section-box">
+          <div class="section-title"><h2>Mount Limits</h2></div>
+          <div class="grid two">
+            <input id="minHeight" type="number" min="0.5" step="0.5" value="3" placeholder="Min height" />
+            <input id="maxHeight" type="number" min="0.5" step="0.5" value="8" placeholder="Max height" />
+            <input id="minTilt" type="number" min="0" max="89" step="1" value="8" placeholder="Min tilt" />
+            <input id="maxTilt" type="number" min="1" max="89" step="1" value="55" placeholder="Max tilt" />
+            <input id="minPan" type="number" min="0" max="359" step="1" value="0" placeholder="Min pan" />
+            <input id="maxPan" type="number" min="0" max="359" step="1" value="359" placeholder="Max pan" />
+          </div>
+        </div>
+
+        <!-- Detection Target -->
+        <div class="section-box">
+          <div class="section-title"><h2>Detection Target</h2></div>
+          <div class="grid two">
+            <input id="birdLength" type="number" min="0.05" step="0.05" value="0.35" placeholder="Bird length" />
+            <input id="birdWidth" type="number" min="0.05" step="0.05" value="0.18" placeholder="Bird width" />
+            <input id="detectPixels" type="number" min="4" step="1" value="18" placeholder="Detect px" />
+            <input id="trackPixels" type="number" min="4" step="1" value="32" placeholder="Track px" />
+          </div>
+        </div>
+
+        <!-- Business Rules -->
+        <div class="section-box">
+          <div class="section-title"><h2>Business Rules</h2></div>
+          <div class="grid two">
+            <input id="cameraCount" type="number" min="0" step="1" placeholder="Camera limit" />
+            <input id="budgetInput" type="number" min="0" step="100" placeholder="Budget" />
+          </div>
+          <div class="slider-row" style="margin-top:6px">
+            <div class="slider-header"><span class="label">Coverage target</span><span class="value" id="requiredCoverageVal">98%</span></div>
+            <input type="range" id="requiredCoverageSlider" data-slider-for="requiredCoverage" min="1" max="100" step="1" value="98" />
+            <input id="requiredCoverage" type="number" min="1" max="100" step="1" value="98" style="display:none" data-enhanced="true" />
+          </div>
+          <div class="slider-row">
+            <div class="slider-header"><span class="label">Confidence</span><span class="value" id="confidenceInputVal">70%</span></div>
+            <input type="range" id="confidenceInputSlider" data-slider-for="confidenceInput" min="1" max="100" step="1" value="70" />
+            <input id="confidenceInput" type="number" min="1" max="100" step="1" value="70" style="display:none" data-enhanced="true" />
+          </div>
+          <input id="scaleInput" type="number" value="1" style="display:none" data-enhanced="true" />
+          <input id="candidateSpacing" type="number" value="7" style="display:none" data-enhanced="true" />
+        </div>
+      </div>
+    </aside>
+
+    <!-- ─── RIGHT PANEL: Results ─── -->
+    <aside class="ui-panel right-panel" id="rightPanel" style="display:none" data-enhanced="true">
+      <header class="panel-header" style="padding:9px 12px">
+        <div>
+          <p class="eyebrow">Recommended Layout</p>
+          <h2 id="statusTitle">Ready</h2>
+        </div>
+        <span id="runState" class="status-pill">Idle</span>
+      </header>
+
+      <div class="metric-grid">
+        <article><span>Cameras</span><strong id="minimumCameras">-</strong></article>
+        <article><span>Coverage</span><strong id="coverageMetric">-</strong></article>
+        <article><span>Blind</span><strong id="blindMetric">-</strong></article>
+        <article><span>Overlap</span><strong id="overlapMetric">-</strong></article>
+        <article><span>Pixels</span><strong id="pixelMetric">-</strong></article>
+        <article><span>Util.</span><strong id="utilizationMetric">-</strong></article>
+      </div>
+
+      <!-- Map Layer Tabs -->
+      <div class="section-box" style="margin:0 12px 8px">
+        <div class="section-title">
+          <h2><span class="material-icons md-16">layers</span> Map Layer</h2>
+        <div class="layer-tabs">
+          <button class="tab active" data-layer="coverage" type="button">Coverage</button>
+          <button class="tab" data-layer="blind" type="button">Blind</button>
+          <button class="tab" data-layer="overlap" type="button">Overlap</button>
+          <button class="tab" data-layer="pixel" type="button">Pixels</button>
+          <button class="tab" data-layer="detectability" type="button">Detect</button>
+          <button class="tab" data-layer="tracking" type="button">Track</button>
+          <button class="tab" data-layer="distance" type="button">Dist</button>
+        </div>
+      </div>
+
+      <!-- Cameras List -->
+      <div class="section-box" style="margin:0 12px 8px;max-height:180px;overflow:auto">
+        <div class="section-title">
+          <h2><span class="material-icons md-16">photo_camera</span> Cameras</h2>
+          <span id="cameraSummary" class="muted"></span>
+        </div>
+        <div id="cameraList" class="camera-list" style="max-height:120px"></div>
+      </div>
+
+      <!-- Selected Camera (editable, appears when camera clicked) -->
+      <div class="section-box" id="selectedCamBox" style="margin:0 12px 8px">
+        <div class="section-title">
+          <h2>Tune Camera</h2>
+          <span id="selectedCameraName" class="muted" style="color:var(--blue)">Click a camera ↓</span>
+        </div>
+        <div class="slider-row">
+          <div class="slider-header"><span class="label">Pole height</span><span class="value" id="manualHeightVal">8m</span></div>
+          <input type="range" id="manualHeightSlider" data-slider-for="manualHeight" min="0.5" max="30" step="0.1" value="8" />
+          <input id="manualHeight" type="number" min="0.5" max="30" step="0.1" value="8" style="display:none" data-enhanced="true" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header"><span class="label">Yaw</span><span class="value" id="manualYawVal">0°</span></div>
+          <input type="range" id="manualYawSlider" data-slider-for="manualYaw" min="0" max="359" step="1" value="0" />
+          <input id="manualYaw" type="number" min="0" max="359" step="1" value="0" style="display:none" data-enhanced="true" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header"><span class="label">Tilt</span><span class="value" id="manualTiltVal">32°</span></div>
+          <input type="range" id="manualTiltSlider" data-slider-for="manualTilt" min="0" max="89" step="1" value="32" />
+          <input id="manualTilt" type="number" min="0" max="89" step="1" value="32" style="display:none" data-enhanced="true" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header"><span class="label">FOV</span><span class="value" id="manualFovVal">78°</span></div>
+          <input type="range" id="manualFovSlider" data-slider-for="manualFov" min="15" max="160" step="1" value="78" />
+          <input id="manualFov" type="number" min="15" max="160" step="1" value="78" style="display:none" data-enhanced="true" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header"><span class="label">Range</span><span class="value" id="manualRangeVal">48m</span></div>
+          <input type="range" id="manualRangeSlider" data-slider-for="manualRange" min="2" max="180" step="1" value="48" />
+          <input id="manualRange" type="number" min="2" max="180" step="1" value="48" style="display:none" data-enhanced="true" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header"><span class="label">Arm</span><span class="value" id="manualArmLengthVal">1.8m</span></div>
+          <input type="range" id="manualArmLengthSlider" data-slider-for="manualArmLength" min="0.2" max="6" step="0.1" value="1.8" />
+          <input id="manualArmLength" type="number" min="0.2" max="6" step="0.1" value="1.8" style="display:none" data-enhanced="true" />
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="export-row" style="padding:0 12px">
+        <button id="exportJson" class="btn ghost" type="button"><span class="material-icons md-16">code</span> JSON</button>
+        <button id="exportCsv" class="btn ghost" type="button"><span class="material-icons md-16">table_chart</span> CSV</button>
+        <button id="downloadReport" class="btn primary" type="button"><span class="material-icons md-16">description</span> Report</button>
+      </div>
+    </aside>
+
+    <!-- ─── BOTTOM PANEL: Scene Controls ─── -->
+    <div class="ui-panel bottom-panel" id="bottomPanel" style="display:none" data-enhanced="true">
+      <div style="font-size:10px;font-weight:800;color:var(--blue);display:flex;align-items:center;gap:5px;border-right:1px solid var(--line);padding-right:10px;flex-shrink:0">
+        <span class="material-icons md-18">wb_sunny</span> Scene
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        <div class="slider-row" style="margin:0">
+          <div class="slider-header"><span class="label">Time</span><span id="timeOfDayLabel" class="value">Day</span></div>
+          <input type="range" id="timeOfDaySlider" data-slider-for="timeOfDay" min="0" max="24" step="0.25" value="10" />
+          <input id="timeOfDay" type="number" min="0" max="24" step="0.25" value="10" style="display:none" data-enhanced="true" />
+        </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        <div class="slider-row" style="margin:0">
+          <div class="slider-header"><span class="label">Azimuth</span><span id="sunAzimuthVal" class="value">45°</span></div>
+          <input type="range" id="sunAzimuthSlider" data-slider-for="sunAzimuth" min="0" max="360" step="1" value="45" />
+          <input id="sunAzimuth" type="number" min="0" max="360" step="1" value="45" style="display:none" data-enhanced="true" />
+        </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        <div class="slider-row" style="margin:0">
+          <div class="slider-header"><span class="label">Elevation</span><span id="sunElevationVal" class="value">35°</span></div>
+          <input type="range" id="sunElevationSlider" data-slider-for="sunElevation" min="-15" max="80" step="1" value="35" />
+          <input id="sunElevation" type="number" min="-15" max="80" step="1" value="35" style="display:none" data-enhanced="true" />
+        </div>
+      </div>
+      <div style="width:70px;flex-shrink:0">
+        <div class="slider-row" style="margin:0">
+          <div class="slider-header"><span class="label">Moon</span><span id="moonIntensityVal" class="value">18</span></div>
+          <input type="range" id="moonIntensitySlider" data-slider-for="moonIntensity" min="0" max="100" step="1" value="18" />
+          <input id="moonIntensity" type="number" min="0" max="100" step="1" value="18" style="display:none" data-enhanced="true" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="bottom-bar">
+      <span id="sceneCaption">3D pond coverage map</span>
+      <span>Drag to orbit · Scroll to zoom</span>
+    </div>
+
+    <!-- ─── ONBOARDING SCRIPT ─── -->
+    <script>
+    (function() {
+      const overlay = document.getElementById('onboardingOverlay');
+      const canvas = document.getElementById('drawCanvas');
+      const ctx = canvas.getContext('2d');
+      const wrapper = document.getElementById('drawCanvasWrapper');
+      const pointCountEl = document.getElementById('drawPointCount');
+      const step1 = document.getElementById('step1Content');
+      const step2 = document.getElementById('step2Content');
+      const dots = document.querySelectorAll('.step-dot');
+
+      let points = [];
+      let activeTool = 'pencil';
+      let dragIndex = -1;
+      let cameraTypes = []; // User-configured camera types
+
+      function setStep(n) {
+        const isStep2 = n === 2;
+        step1.style.display = isStep2 ? 'none' : '';
+        step2.style.display = isStep2 ? '' : 'none';
+        dots.forEach(d => {
+          d.classList.toggle('active', parseInt(d.dataset.step) <= n);
+        });
+        if (isStep2 && !cameraTypes.length) addCameraType();
+      }
+
+      function resizeCanvas() {
+        const w = Math.min(wrapper.clientWidth - 4, 660);
+        const h = Math.round(w * 0.6);
+        canvas.width = w; canvas.height = h;
+        redraw();
+      }
+
+      function redraw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (points.length < 2) {
+          points.forEach(p => { ctx.fillStyle = '#60a5fa'; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill(); });
+          return;
+        }
+        ctx.fillStyle = 'rgba(59,130,246,0.15)';
+        ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        points.forEach(p => { ctx.fillStyle = '#93c5fd'; ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI*2); ctx.fill(); });
+      }
+
+      function addPoint(x, y) { points.push({x,y}); pointCountEl.textContent = points.length + ' pts'; redraw(); }
+      function findNearVertex(x, y, t=12) { for(let i=0;i<points.length;i++) if(Math.hypot(points[i].x-x,points[i].y-y)<t) return i; return -1; }
+      function setPoints(np) { points = np; pointCountEl.textContent = points.length + ' pts'; redraw(); }
+
+      function getScaledPolygon() {
+        const len = Number(document.getElementById('onboardLength').value)||100;
+        const wid = Number(document.getElementById('onboardWidth').value)||76;
+        if(points.length<3) return null;
+        const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+        const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
+        const sw=Math.max(1,mxX-mnX),sh=Math.max(1,mxY-mnY);
+        return points.map(p=>[((p.x-mnX)/sw-0.5)*len,((p.y-mnY)/sh-0.5)*wid]);
+      }
+
+      // Canvas events
+      canvas.addEventListener('mousedown', e => {
+        const rect = canvas.getBoundingClientRect(), mx=e.clientX-rect.left, my=e.clientY-rect.top;
+        if(activeTool!=='pencil') return;
+        dragIndex=findNearVertex(mx,my); if(dragIndex>=0) return;
+        if(points.length>=3 && findNearVertex(mx,my,18)===0){redraw();return;}
+        addPoint(mx,my);
+      });
+      canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect(), mx=e.clientX-rect.left, my=e.clientY-rect.top;
+        if(dragIndex>=0){points[dragIndex]={x:mx,y:my};redraw();return;}
+        canvas.style.cursor = findNearVertex(mx,my)>=0?'grab':'crosshair';
+      });
+      canvas.addEventListener('mouseup',()=>{dragIndex=-1;});
+      canvas.addEventListener('mouseleave',()=>{dragIndex=-1;});
+      canvas.addEventListener('touchstart', e => {
+        if(activeTool!=='pencil')return;e.preventDefault();
+        const r=canvas.getBoundingClientRect(),mx=e.touches[0].clientX-r.left,my=e.touches[0].clientY-r.top;
+        dragIndex=findNearVertex(mx,my);if(dragIndex>=0)return;
+        if(points.length>=3&&findNearVertex(mx,my,18)===0)return;
+        addPoint(mx,my);
+      });
+      canvas.addEventListener('touchmove', e => {
+        if(dragIndex>=0){e.preventDefault();const r=canvas.getBoundingClientRect();points[dragIndex]={x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top};redraw();}
+      });
+      canvas.addEventListener('touchend',()=>{dragIndex=-1;});
+
+      // Tool buttons
+      const tools={toolPencil:'pencil',toolRect:'rect',toolOval:'oval',toolIrregular:'irregular',toolField:'field'};
+      Object.entries(tools).forEach(([id,name])=>{
+        document.getElementById(id).addEventListener('click',()=>{
+          activeTool=name;document.querySelectorAll('.draw-toolbar .btn').forEach(b=>b.classList.remove('active-tool'));
+          document.getElementById(id).classList.add('active-tool');
+          if(name==='rect'){const w=canvas.width*.55,h=canvas.height*.55,ox=(canvas.width-w)/2,oy=(canvas.height-h)/2;const pts=[{x:ox,y:oy},{x:ox+w,y:oy},{x:ox+w,y:oy+h},{x:ox,y:oy+h}];const r=[];for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];for(let j=0;j<=12;j++)r.push({x:a.x+(b.x-a.x)*j/12,y:a.y+(b.y-a.y)*j/12})}setPoints(r);}
+          else if(name==='oval'){const cx=canvas.width/2,cy=canvas.height/2,rx=canvas.width*.28,ry=canvas.height*.28;const pts=[];for(let i=0;i<64;i++){const a=i/64*Math.PI*2;pts.push({x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*ry})}setPoints(pts);}
+          else if(name==='irregular'){const p=[];for(let i=0;i<48;i++){const a=i/48*Math.PI*2,r=canvas.width*.22*(.7+.3*Math.sin(i*2.3));p.push({x:canvas.width/2+Math.cos(a)*r,y:canvas.height/2+Math.sin(a)*r})}setPoints(p);}
+          else if(name==='field'){const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=mxX-mnX,sh=mxY-mnY;const ox=canvas.width*.08,oy=canvas.height*.08,dw=canvas.width*.84,dh=canvas.height*.84;setPoints(bp.map(([x,y])=>({x:ox+((x-mnX)/sw)*dw,y:oy+((y-mnY)/sh)*dh})));}
+        });
+      });
+
+      document.getElementById('toolClear').addEventListener('click',()=>setPoints([]));
+      document.getElementById('toolImport').addEventListener('click',()=>document.getElementById('boundaryFile').click());
+      document.getElementById('boundaryFile').addEventListener('change',async function(e){
+        const file=e.target.files?.[0];if(!file)return;const text=await file.text();
+        const rp=text.split(/\n+/).map(l=>l.trim()).filter(Boolean).map(l=>l.split(/[,\s]+/).filter(Boolean).slice(0,2).map(Number)).filter(p=>p.length===2&&p.every(Number.isFinite));
+        if(rp.length<3)return;const xs=rp.map(p=>p[0]),ys=rp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=Math.max(1,mxX-mnX),sh=Math.max(1,mxY-mnY);const dw=canvas.width*.8,dh=canvas.height*.8,ox=canvas.width*.1,oy=canvas.height*.1;
+        setPoints(rp.map(([x,y])=>({x:ox+((x-mnX)/sw)*dw,y:oy+((y-mnY)/sh)*dh})));
+        document.getElementById('onboardLength').value=Math.round(sw*1.2);document.getElementById('onboardWidth').value=Math.round(sh*1.2);
+      });
+
+      // Step navigation
+      document.getElementById('btnToStep2').addEventListener('click',()=>setStep(2));
+      document.getElementById('btnBackToStep1').addEventListener('click',()=>setStep(1));
+
+      // Camera type management
+      function addCameraType() {
+        const defaultModel = cameraModels[0];
+        cameraTypes.push({
+          name: defaultModel.name, fov: defaultModel.fov, range: defaultModel.range,
+          resW: defaultModel.resolutionW, resH: defaultModel.resolutionH,
+          cost: defaultModel.cost, minHeight: 3, maxHeight: 8
+        });
+        renderCameraTypes();
+      }
+
+      function removeCameraType(idx) { cameraTypes.splice(idx,1); renderCameraTypes(); }
+
+      function renderCameraTypes() {
+        const list = document.getElementById('cameraTypesList');
+        list.innerHTML = cameraTypes.map((ct, i) => `
+          <div class="section-box" style="margin:0">
+            <div class="section-title">
+              <strong style="font-size:12px">Camera Type ${i+1}</strong>
+              <button class="btn ghost" style="min-height:22px;font-size:9px;padding:0 6px" onclick="removeCameraType(${i})">Remove</button>
+            </div>
+            <div class="grid two">
+              <label>Model<select onchange="updateCameraType(${i},'name',this.value)">${cameraModels.map((m,j)=>`<option value="${m.name}" ${m.name===ct.name?'selected':''}>${m.name}</option>`).join('')}</select></label>
+              <label>FOV°<input type="number" value="${ct.fov}" min="15" max="160" oninput="updateCameraType(${i},'fov',+this.value)" /></label>
+              <label>Range m<input type="number" value="${ct.range}" min="2" max="180" oninput="updateCameraType(${i},'range',+this.value)" /></label>
+              <label>Resolution W<input type="number" value="${ct.resW}" min="320" oninput="updateCameraType(${i},'resW',+this.value)" /></label>
+              <label>Resolution H<input type="number" value="${ct.resH}" min="240" oninput="updateCameraType(${i},'resH',+this.value)" /></label>
+              <label>Cost ₹<input type="number" value="${ct.cost}" min="0" oninput="updateCameraType(${i},'cost',+this.value)" /></label>
+              <label>Min Height<input type="number" value="${ct.minHeight}" min="0.5" step="0.5" oninput="updateCameraType(${i},'minHeight',+this.value)" /></label>
+              <label>Max Height<input type="number" value="${ct.maxHeight}" min="0.5" step="0.5" oninput="updateCameraType(${i},'maxHeight',+this.value)" /></label>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      window.updateCameraType = function(idx, key, val) {
+        if (cameraTypes[idx]) cameraTypes[idx][key] = val;
+      };
+      window.removeCameraType = removeCameraType;
+
+      document.getElementById('btnAddCameraType').addEventListener('click', addCameraType);
+
+      // Continue
+      document.getElementById('btnContinueOnboarding').addEventListener('click', () => {
+        const poly = getScaledPolygon();
+        if (poly && poly.length >= 3) window.__onboardPolygon = poly;
+        window.__onboardCameraTypes = cameraTypes.length ? cameraTypes : null;
+        document.getElementById('loadingOverlay').classList.remove('hidden');
+        document.getElementById('loadingText').textContent = 'Setting up your pond...';
+        setTimeout(() => finishOnboarding(), 100);
+      });
+
+      document.getElementById('btnSkipOnboarding').addEventListener('click', () => {
+        window.__onboardPolygon = null;
+        window.__onboardCameraTypes = null;
+        document.getElementById('loadingOverlay').classList.remove('hidden');
+        document.getElementById('loadingText').textContent = 'Setting up your pond...';
+        setTimeout(() => finishOnboarding(), 100);
+      });
+
+      function finishOnboarding() {
+        overlay.classList.add('hidden');
+        document.getElementById('leftPanel').style.display = '';
+        document.getElementById('rightPanel').style.display = '';
+        document.getElementById('bottomPanel').style.display = '';
+        if (window.__onboardDone) window.__onboardDone(window.__onboardPolygon || null);
+      }
+
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+      // Default field sample on load
+      { const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=mxX-mnX,sh=mxY-mnY;const ox=canvas.width*.08,oy=canvas.height*.08,dw=canvas.width*.84,dh=canvas.height*.84;setPoints(bp.map(([x,y])=>({x:ox+((x-mnX)/sw)*dw,y:oy+((y-mnY)/sh)*dh}))); }
+      window.__getOnboardPolygon = getScaledPolygon;
+    })();
+    </script>
+
+    <!-- ─── SLIDER SYNC SCRIPT ─── -->
+    <script>
+    // Wire sliders to hidden number inputs for two-way sync
+    (function() {
+      const pairs = [
+        ['pondLengthSlider','pondLength','pondLengthVal',''],
+        ['pondWidthSlider','pondWidth','pondWidthVal',''],
+        ['centerPoleCountSlider','centerPoleCount','centerPoleCountVal',''],
+        ['centerPoleFovSlider','centerPoleFov','centerPoleFovVal','°'],
+        ['manualHeightSlider','manualHeight','manualHeightVal','m'],
+        ['manualYawSlider','manualYaw','manualYawVal','°'],
+        ['manualTiltSlider','manualTilt','manualTiltVal','°'],
+        ['manualFovSlider','manualFov','manualFovVal','°'],
+        ['manualRangeSlider','manualRange','manualRangeVal','m'],
+        ['manualArmLengthSlider','manualArmLength','manualArmLengthVal','m'],
+        ['fovInputSlider','fovInput','fovInputVal','°'],
+        ['rangeInputSlider','rangeInput','rangeInputVal','m'],
+        ['requiredCoverageSlider','requiredCoverage','requiredCoverageVal','%'],
+        ['confidenceInputSlider','confidenceInput','confidenceInputVal','%'],
+        ['timeOfDaySlider','timeOfDay','timeOfDayLabel',''],
+        ['sunAzimuthSlider','sunAzimuth','sunAzimuthVal','°'],
+        ['sunElevationSlider','sunElevation','sunElevationVal','°'],
+        ['moonIntensitySlider','moonIntensity','moonIntensityVal',''],
+      ];
+
+      pairs.forEach(([sliderId, inputId, valId, suffix]) => {
+        const slider = document.getElementById(sliderId);
+        const input = document.getElementById(inputId);
+        const valEl = document.getElementById(valId);
+        if (!slider || !input) return;
+
+        slider.addEventListener('input', () => {
+          input.value = slider.value;
+          if (valEl) valEl.textContent = slider.value + suffix;
+          input.dispatchEvent(new Event('input', {bubbles:true}));
+        });
+        input.addEventListener('input', () => {
+          if (input.value !== '') {
+            slider.value = input.value;
+            if (valEl) valEl.textContent = input.value + suffix;
+          }
+        });
+        // Init display value
+        if (valEl) valEl.textContent = slider.value + suffix;
+      });
+
+      // Collapse left panel
+      document.getElementById('collapseLeftPanel').addEventListener('click', () => {
+        document.getElementById('leftPanelBody').classList.toggle('collapsed');
+      });
+
+      // Right panel toggle (tablet/mobile)
+      const panelToggle = document.getElementById('panelToggle');
+      const rightPanel = document.getElementById('rightPanel');
+      panelToggle.addEventListener('click', () => {
+        rightPanel.classList.toggle('open');
+        panelToggle.classList.toggle('panel-open', rightPanel.classList.contains('open'));
+        panelToggle.textContent = rightPanel.classList.contains('open') ? '✕' : '☰';
+      });
+    })();
+    </script>
+
+    <!-- ─── APP.JS (backend intact) ─── -->
+    <script src="app.js"></script>
+  </body>
+</html>
