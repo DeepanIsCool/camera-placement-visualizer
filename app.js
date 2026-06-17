@@ -65,7 +65,11 @@ function bindEvents() {
   if (el.importBoundary) el.importBoundary.addEventListener("click", () => el.boundaryFile.click());
   if (el.boundaryFile) el.boundaryFile.addEventListener("change", importBoundaryFile);
   if (el.themeToggle) el.themeToggle.addEventListener("click", () => {
-    document.body.classList.toggle("light");
+    const isLight = document.body.classList.toggle("light");
+    const icon = document.getElementById("themeToggleIcon");
+    if (icon) {
+      icon.textContent = isLight ? "dark_mode" : "wb_sunny";
+    }
     updateSceneEnvironment();
   });
   document.querySelectorAll(".tab").forEach((button) => {
@@ -613,53 +617,15 @@ function renderScene(result) {
   el.sceneCaption.textContent = `${result.selected.length} cameras · ${pct(result.coveragePercent)} coverage · ${result.configsEvaluated.toLocaleString()} configurations`;
 }
 
-function createSubdividedPondGeometry(polygon, cellSize) {
-  const b = bounds(polygon);
-  const cols = Math.ceil((b.maxX - b.minX) / cellSize) + 1;
-  const rows = Math.ceil((b.maxY - b.minY) / cellSize) + 1;
-  const verts = [];
-  const indices = [];
-  const indexMap = {};
-  const key = (r, c) => `${r},${c}`;
-  
-  // Sample grid points inside polygon
-  for (let r = 0; r <= rows; r++) {
-    for (let c = 0; c <= cols; c++) {
-      const x = b.minX + c * cellSize;
-      const y = b.minY + r * cellSize;
-      if (pointInPolygon([x, y], polygon)) {
-        indexMap[key(r, c)] = verts.length;
-        verts.push(x, y, 0);
-      }
-    }
-  }
-  
-  // Build triangle indices for adjacent grid cells
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const a = indexMap[key(r, c)];
-      const b2 = indexMap[key(r, c + 1)];
-      const c2 = indexMap[key(r + 1, c)];
-      const d = indexMap[key(r + 1, c + 1)];
-      
-      if (a !== undefined && b2 !== undefined && c2 !== undefined) {
-        indices.push(a, b2, c2);
-      }
-      if (b2 !== undefined && d !== undefined && c2 !== undefined) {
-        indices.push(b2, d, c2);
-      }
-    }
-  }
-  
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
 function renderPond(result) {
-  const pondGeo = createSubdividedPondGeometry(result.polygon, 1.5);
+  const shape = new THREE.Shape();
+  shape.moveTo(result.polygon[0][0], result.polygon[0][1]);
+  for (let i = 1; i < result.polygon.length; i++) {
+    shape.lineTo(result.polygon[i][0], result.polygon[i][1]);
+  }
+  shape.closePath();
+  const pondGeo = new THREE.ShapeGeometry(shape);
+
   const pondMesh = new THREE.Mesh(pondGeo, createWaterMaterial());
   pondMesh.rotation.x = -Math.PI / 2;
   pondMesh.position.y = 0.01;
@@ -704,39 +670,14 @@ function createWaterMaterial() {
     depthWrite: false,
     vertexShader: `
       uniform float uTime;
-      varying float vElevation;
       varying vec3 vWorldPos;
-      varying vec3 vNormal;
       varying vec3 vViewDir;
 
-      float wave(vec2 p, float t) {
-        float w = 0.0;
-        w += sin(p.x * 0.18 + t * 0.6) * 0.7;
-        w += sin(p.y * 0.15 + t * 0.45) * 0.55;
-        w += sin((p.x + p.y) * 0.09 + t * 0.8) * 0.4;
-        w += sin((p.x - p.y * 0.7) * 0.28 + t * 1.1) * 0.35;
-        w += sin(p.x * 0.5 + p.y * 0.3 + t * 1.4) * 0.2;
-        w += sin(p.y * 0.6 - p.x * 0.2 + t * 0.35) * 0.25;
-        return w * 1.4;
-      }
-
       void main() {
-        vec3 p = position;
-        float elev = wave(p.xy, uTime);
-        p.z += elev;
-        vElevation = elev;
-
-        float e = 0.12;
-        float hL = wave(p.xy + vec2(-e, 0.0), uTime);
-        float hR = wave(p.xy + vec2( e, 0.0), uTime);
-        float hD = wave(p.xy + vec2(0.0, -e), uTime);
-        float hU = wave(p.xy + vec2(0.0,  e), uTime);
-        vNormal = normalize(mat3(modelMatrix) * vec3(hL - hR, hD - hU, 2.0 * e));
-
-        vec4 worldPos = modelMatrix * vec4(p, 1.0);
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
         vWorldPos = worldPos.xyz;
         vViewDir = normalize(cameraPosition - worldPos.xyz);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
@@ -745,40 +686,97 @@ function createWaterMaterial() {
       uniform vec3 uFoamColor;
       uniform vec3 uSunDir;
       uniform float uTime;
-      varying float vElevation;
       varying vec3 vWorldPos;
-      varying vec3 vNormal;
       varying vec3 vViewDir;
 
-      void main() {
-        vec3 N = normalize(vNormal);
-        vec3 L = normalize(uSunDir);
+      float getElevation(vec2 pos, float t) {
+        float w = 0.0;
+        w += sin(pos.x * 0.14 + t * 0.6) * 0.4;
+        w += sin(pos.y * 0.12 + t * 0.45) * 0.3;
+        w += sin((pos.x + pos.y) * 0.08 + t * 0.8) * 0.25;
+        w += sin((pos.x - pos.y * 0.7) * 0.22 + t * 1.1) * 0.2;
+        w += sin(pos.x * 0.4 + pos.y * 0.25 + t * 1.4) * 0.12;
+        w += sin(pos.y * 0.5 - pos.x * 0.15 + t * 0.35) * 0.15;
+        return w * 0.6;
+      }
 
-        float depth = smoothstep(-0.7, 1.2, vElevation);
+      vec3 getWaterNormal(vec2 pos, float t) {
+        float dfdx = 0.0;
+        float dfdz = 0.0;
+
+        // Wave 1
+        float a1 = 0.4; vec2 k1 = vec2(0.14, 0.0); float s1 = 0.6;
+        float angle1 = pos.x * k1.x + t * s1;
+        dfdx += a1 * k1.x * cos(angle1);
+
+        // Wave 2
+        float a2 = 0.3; vec2 k2 = vec2(0.0, 0.12); float s2 = 0.45;
+        float angle2 = pos.y * k2.y + t * s2;
+        dfdz += a2 * k2.y * cos(angle2);
+
+        // Wave 3
+        float a3 = 0.25; vec2 k3 = vec2(0.08, 0.08); float s3 = 0.8;
+        float angle3 = (pos.x + pos.y) * k3.x + t * s3;
+        dfdx += a3 * k3.x * cos(angle3);
+        dfdz += a3 * k3.y * cos(angle3);
+
+        // Wave 4
+        float a4 = 0.2; vec2 k4 = vec2(0.22, -0.154); float s4 = 1.1;
+        float angle4 = (pos.x - pos.y * 0.7) * 0.22 + t * s4;
+        dfdx += a4 * 0.22 * cos(angle4);
+        dfdz += a4 * (-0.154) * cos(angle4);
+
+        // Wave 5
+        float a5 = 0.12; vec2 k5 = vec2(0.4, 0.25); float s5 = 1.4;
+        float angle5 = pos.x * k5.x + pos.y * k5.y + t * s5;
+        dfdx += a5 * k5.x * cos(angle5);
+        dfdz += a5 * k5.y * cos(angle5);
+
+        // Wave 6
+        float a6 = 0.15; vec2 k6 = vec2(-0.15, 0.5); float s6 = 0.35;
+        float angle6 = pos.y * k6.y - pos.x * 0.15 + t * s6;
+        dfdx += a6 * (-0.15) * cos(angle6);
+        dfdz += a6 * k6.y * cos(angle6);
+
+        dfdx *= 0.6;
+        dfdz *= 0.6;
+
+        return normalize(vec3(-dfdx, 1.0, -dfdz));
+      }
+
+      void main() {
+        vec2 uv = vWorldPos.xz;
+        float elevation = getElevation(uv, uTime);
+
+        vec3 N = getWaterNormal(uv, uTime);
+        vec3 L = normalize(uSunDir);
+        vec3 V = normalize(vViewDir);
+
+        float depth = smoothstep(-0.4, 0.8, elevation);
         vec3 color = mix(uDeepColor, uSurfaceColor, depth);
 
         // Diffuse
         float diff = max(dot(N, L), 0.0);
         color *= 0.45 + 0.55 * diff;
 
-        // Specular (Blinn-Phong)
-        vec3 H = normalize(L + vViewDir);
-        float spec = pow(max(dot(N, H), 0.0), 180.0);
-        color += vec3(1.0, 0.96, 0.88) * spec * 0.9;
+        // Specular
+        vec3 H = normalize(L + V);
+        float spec = pow(max(dot(N, H), 0.0), 120.0);
+        color += vec3(1.0, 0.97, 0.9) * spec * 0.75;
 
-        // Fresnel edge glow
-        float fresnel = pow(1.0 - abs(dot(N, vViewDir)), 2.5);
-        color += vec3(0.15, 0.3, 0.45) * fresnel * 0.25;
+        // Fresnel
+        float fresnel = pow(1.0 - abs(dot(N, V)), 2.5);
+        color += vec3(0.15, 0.35, 0.5) * fresnel * 0.3;
 
-        // Foam on wave peaks
-        float foam = smoothstep(0.55, 1.05, vElevation);
-        color = mix(color, uFoamColor, foam * 0.4);
+        // Foam
+        float foam = smoothstep(0.3, 0.6, elevation);
+        color = mix(color, uFoamColor, foam * 0.35);
 
-        // Subtle caustic shimmer
-        float shimmer = sin(vWorldPos.x * 0.4 + uTime * 2.0) * sin(vWorldPos.z * 0.4 + uTime * 1.7);
-        color += vec3(0.1, 0.2, 0.3) * shimmer * 0.06;
+        // Caustics
+        float shimmer = sin(uv.x * 0.4 + uTime * 2.0) * sin(uv.y * 0.4 + uTime * 1.7);
+        color += vec3(0.1, 0.22, 0.35) * shimmer * 0.05;
 
-        // Grid reflection
+        // Grid
         float gridX = abs(fract(vWorldPos.x / 8.0 + 0.5) - 0.5);
         float gridZ = abs(fract(vWorldPos.z / 8.0 + 0.5) - 0.5);
         float gridLine = 1.0 - smoothstep(0.0, 0.025, min(gridX, gridZ));
@@ -883,7 +881,11 @@ function renderCameras(result) {
     // ── CAMERA HOUSING (domed cylinder, like real CCTV) ──
     const housingGroup = new THREE.Group();
     housingGroup.position.set(0, 0.5, -armLength * 0.75);
-    housingGroup.lookAt(camGroup.position.clone().add(forward3D));
+    
+    // Rotate camGroup horizontally (yaw/heading)
+    camGroup.rotation.y = degToRad(camera.heading) - Math.PI / 2;
+    // Rotate housingGroup vertically (pitch/tilt)
+    housingGroup.rotation.x = degToRad(camera.pitch);
     
     // Main body (rounded cylinder)
     const bodyGeo = new THREE.CylinderGeometry(0.5, 0.55, 1.6, 32);

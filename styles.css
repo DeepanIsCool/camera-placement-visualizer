@@ -301,9 +301,6 @@ body.light .btn.ghost { background: rgba(241, 245, 249, 0.8); }
 }
 .fab:hover { transform: scale(1.08); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 
-.theme-btn { top: 16px; left: 50%; transform: translateX(-50%); }
-.theme-btn:hover { transform: translateX(-50%) scale(1.08); }
-
 .settings-btn { top: 16px; left: 16px; }
 
 /* ═══════════════════════════════════════════════════
@@ -416,11 +413,24 @@ body.light .camera-card { background: rgba(255, 255, 255, 0.8); }
 /* ═══════════════════════════════════════════════════
    Bottom Bar (hint text)
    ═══════════════════════════════════════════════════ */
+/* ── Bottom Bar (hint text) ── */
 .bottom-bar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 11;
-  padding: 8px 16px; display: flex; justify-content: center; gap: 20px;
-  font-size: 12px; color: var(--muted);
-  pointer-events: none;
+  position: fixed; bottom: 20px; left: 24px; z-index: 11;
+  padding: 10px 16px; display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; font-weight: 500; color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: auto;
+  transition: all var(--duration) var(--ease-out);
+}
+#sceneCaption {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -593,8 +603,16 @@ body.light .camera-card { background: rgba(255, 255, 255, 0.8); }
 .bottom-panel .scene-label {
   font-size: 11px; font-weight: 700; color: var(--blue);
   display: flex; align-items: center; gap: 6px;
-  border-right: 1px solid var(--line); padding-right: 14px;
+  background: none; border: none; outline: none;
+  border-right: 1px solid var(--line); padding: 0 14px 0 0;
   flex-shrink: 0; white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--duration) var(--ease-out);
+}
+.bottom-panel .scene-label:hover {
+  color: var(--blue-strong);
+  opacity: 0.85;
 }
 .bottom-panel .scene-slider {
   flex: 1; display: flex; flex-direction: column; gap: 3px;
@@ -709,9 +727,19 @@ body.light .camera-card { background: rgba(255, 255, 255, 0.8); }
   }
 
   .settings-btn { top: 10px; left: 10px; width: 38px; height: 38px; }
-  .fab.theme-btn { top: 10px; width: 38px; height: 38px; }
 
-  .bottom-bar { font-size: 11px; padding: 6px 12px; gap: 12px; }
+  .bottom-bar {
+    left: 12px; bottom: 12px; right: 12px;
+    padding: 8px 12px;
+    font-size: 10px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: var(--radius-sm);
+  }
+  #sceneCaption {
+    font-size: 10px;
+  }
 
   .settings-card {
     width: 100%; max-width: 100%;

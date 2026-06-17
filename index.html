@@ -78,9 +78,6 @@
     <button id="settingsBtn" class="fab settings-btn" type="button" title="Settings">
       <span class="material-icons">settings</span>
     </button>
-    <button id="themeToggle" class="fab theme-btn" type="button" title="Toggle theme">
-      <span class="material-icons">dark_mode</span>
-    </button>
 
     <!-- Loading Screen -->
     <div id="loadingOverlay" class="onboarding-overlay hidden" style="z-index:200">
@@ -332,9 +329,9 @@
 
     <!-- ─── BOTTOM PANEL: Scene Controls ─── -->
     <div class="ui-panel bottom-panel" id="bottomPanel" style="display:none">
-      <div class="scene-label">
-        <span class="material-icons md-18">wb_sunny</span> Scene
-      </div>
+      <button id="themeToggle" class="scene-label theme-toggle-btn" type="button" title="Toggle theme">
+        <span class="material-icons md-18" id="themeToggleIcon">wb_sunny</span> Scene
+      </button>
       <div class="scene-slider">
         <div class="slider-row">
           <div class="slider-header"><span class="label">Time</span><span id="timeOfDayLabel" class="value">Day</span></div>
