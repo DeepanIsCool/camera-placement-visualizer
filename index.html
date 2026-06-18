@@ -16,12 +16,14 @@
   <body>
     <!-- ─── ONBOARDING OVERLAY ─── -->
     <div id="onboardingOverlay" class="onboarding-overlay">
-      <div class="onboarding-card" id="onboardingCard">
+      <div class="onboarding-card" id="onboardingCard" style="max-height: 90vh; overflow-y: auto;">
         <!-- Step indicator -->
-        <div style="display:flex;gap:6px;justify-content:center;margin-bottom:4px" id="stepDots">
+        <div style="display:flex;gap:6px;justify-content:center;margin-bottom:12px;align-items:center" id="stepDots">
           <div class="step-dot active" data-step="1"></div>
           <div class="step-line"></div>
           <div class="step-dot" data-step="2"></div>
+          <div class="step-line"></div>
+          <div class="step-dot" data-step="3"></div>
         </div>
 
         <!-- ── STEP 1: Pond Design ── -->
@@ -35,36 +37,128 @@
             <canvas id="drawCanvas" width="660" height="400"></canvas>
           </div>
           <div class="draw-toolbar">
-            <button class="btn ghost active-tool" id="toolPencil">Pencil</button>
-            <button class="btn ghost" id="toolRect">Rectangle</button>
-            <button class="btn ghost" id="toolOval">Oval</button>
-            <button class="btn ghost" id="toolIrregular">Irregular</button>
-            <button class="btn ghost" id="toolField">Field Sample</button>
-            <button class="btn ghost" id="toolImport">Import CSV</button>
-            <button class="btn ghost" id="toolClear">Clear</button>
-            <span style="margin-left:auto;font-size:11px;color:var(--muted)" id="drawPointCount">0 points</span>
+            <div class="toolbar-group">
+              <button class="btn tool-btn active-tool" id="toolPencil" type="button" title="Pencil Tool"><span class="material-icons md-16">edit</span> Pencil</button>
+              <button class="btn tool-btn" id="toolRect" type="button" title="Rectangle Preset"><span class="material-icons md-16">crop_square</span> Rect</button>
+              <button class="btn tool-btn" id="toolOval" type="button" title="Oval Preset"><span class="material-icons md-16">radio_button_unchecked</span> Oval</button>
+              <button class="btn tool-btn" id="toolIrregular" type="button" title="Irregular Preset"><span class="material-icons md-16">gesture</span> Irregular</button>
+              <button class="btn tool-btn" id="toolField" type="button" title="Field Sample Preset"><span class="material-icons md-16">map</span> Field</button>
+            </div>
+            <div class="toolbar-group" style="margin-left: auto;">
+              <button class="btn tool-btn secondary" id="toolImport" type="button" title="Import Boundary CSV"><span class="material-icons md-16">upload_file</span> Import</button>
+              <button class="btn tool-btn danger" id="toolClear" type="button" title="Clear Canvas"><span class="material-icons md-16">delete_outline</span> Clear</button>
+            </div>
+            <span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:8px" id="drawPointCount">0 points</span>
           </div>
-          <div class="grid two" style="gap:12px">
-            <label>Pond length (m)<input id="onboardLength" type="number" min="10" max="500" step="1" value="100" /></label>
-            <label>Pond width (m)<input id="onboardWidth" type="number" min="10" max="500" step="1" value="76" /></label>
-          </div>
-          <div class="onboarding-actions">
-            <button class="btn ghost" id="btnSkipOnboarding">Skip, use defaults</button>
-            <button class="btn primary" id="btnToStep2">Next: Configure Cameras →</button>
+          <div class="grid two" style="gap:16px; margin-top: 12px; align-items: flex-end;">
+            <div class="grid two" style="gap:12px">
+              <label style="font-size:11px; font-weight:600; color:var(--muted)">Pond length (m)
+                <input id="onboardLength" type="number" min="10" max="500" step="1" value="100" />
+              </label>
+              <label style="font-size:11px; font-weight:600; color:var(--muted)">Pond width (m)
+                <input id="onboardWidth" type="number" min="10" max="500" step="1" value="76" />
+              </label>
+            </div>
+            <div class="onboarding-actions" style="margin-top:0">
+              <button class="btn ghost" id="btnSkipOnboarding" type="button">Skip, use defaults</button>
+              <button class="btn primary" id="btnToStep2" type="button">Next: Detection Targets →</button>
+            </div>
           </div>
         </div>
 
-        <!-- ── STEP 2: Camera Configuration ── -->
+        <!-- ── STEP 2: Detection Targets ── -->
         <div id="step2Content" style="display:none">
           <div>
-            <h1>Configure cameras</h1>
-            <p>Select camera types and configure their specifications. The optimizer will determine the best mix, quantity, and placement.</p>
+            <h1>Target Species & Resolution</h1>
+            <p>Select the bird size preset you wish to monitor, or enter custom target dimensions and pixel requirements.</p>
           </div>
-          <div id="cameraTypesList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto"></div>
-          <button class="btn ghost" id="btnAddCameraType" style="width:100%;justify-content:center">+ Add Camera Type</button>
+          
+          <div class="species-preset-grid">
+            <div class="preset-card" id="presetSmall">
+              <span class="material-icons preset-icon" style="color: var(--blue)">flutter_dash</span>
+              <span class="preset-title">Small Bird</span>
+              <span class="preset-desc">Sparrows, Swallows (15cm)</span>
+            </div>
+            <div class="preset-card active" id="presetMedium">
+              <span class="material-icons preset-icon" style="color: var(--orange)">pets</span>
+              <span class="preset-title">Medium Bird</span>
+              <span class="preset-desc">Pigeons, Ducks (35cm)</span>
+            </div>
+            <div class="preset-card" id="presetLarge">
+              <span class="material-icons preset-icon" style="color: var(--teal)">flight</span>
+              <span class="preset-title">Large Bird</span>
+              <span class="preset-desc">Herons, Cranes (90cm)</span>
+            </div>
+          </div>
+
+          <div class="grid two" style="gap:12px">
+            <label>Bird length (m)<input id="onboardBirdLength" type="number" min="0.05" step="0.01" value="0.35" /></label>
+            <label>Bird width (m)<input id="onboardBirdWidth" type="number" min="0.05" step="0.01" value="0.18" /></label>
+            <label>Detect pixels<input id="onboardDetectPixels" type="number" min="4" step="1" value="18" /></label>
+            <label>Track pixels<input id="onboardTrackPixels" type="number" min="4" step="1" value="32" /></label>
+          </div>
+          <div class="grid two" style="gap:12px; margin-top:8px">
+            <label>Confidence threshold (%)<input id="onboardConfidence" type="number" min="10" max="100" step="1" value="70" /></label>
+            <div style="visibility:hidden"><label>&nbsp;<input type="text" disabled /></label></div>
+          </div>
+
           <div class="onboarding-actions">
             <button class="btn ghost" id="btnBackToStep1">← Back</button>
-            <button class="btn primary" id="btnContinueOnboarding">Optimize & Continue →</button>
+            <button class="btn primary" id="btnToStep3">Next: Camera Setup →</button>
+          </div>
+        </div>
+
+        <!-- ── STEP 3: Infrastructure & Rules ── -->
+        <div id="step3Content" style="display:none">
+          <div>
+            <h1>Infrastructure & Rules</h1>
+            <p>Select your camera model, mounting limits, and optimization constraints.</p>
+          </div>
+
+          <div class="grid two" style="gap:16px">
+            <div>
+              <h3 style="font-size:12px;color:var(--blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Hardware & Mounts</h3>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label>Primary Camera Model
+                  <select id="onboardCameraModel" style="width:100%"></select>
+                </label>
+                <div class="grid two">
+                  <label>Min height (m)<input id="onboardMinHeight" type="number" min="0.5" step="0.5" value="3" /></label>
+                  <label>Max height (m)<input id="onboardMaxHeight" type="number" min="0.5" step="0.5" value="8" /></label>
+                </div>
+              </div>
+
+              <h3 style="font-size:12px;color:var(--blue);margin-top:16px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Middle Pole Array</h3>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label class="switch-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)">
+                  <input id="onboardCenterPoleEnabled" type="checkbox" checked style="width:15px;height:15px" /> Enable central pole mounting array
+                </label>
+                <div class="grid two">
+                  <label>Cameras count<input id="onboardCenterPoleCount" type="number" min="1" max="12" step="1" value="5" /></label>
+                  <label>Camera FOV (°)<input id="onboardCenterPoleFov" type="number" min="15" max="160" step="1" value="78" /></label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 style="font-size:12px;color:var(--blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Optimization Rules</h3>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label>Target Coverage (%)
+                  <input id="onboardCoverage" type="number" min="1" max="100" step="1" value="98" />
+                </label>
+                <label>Budget Limit (₹)
+                  <input id="onboardBudget" type="number" min="0" step="1000" placeholder="No limit" />
+                </label>
+                <label>Max Camera Limit
+                  <input id="onboardMaxCameras" type="number" min="0" step="1" placeholder="No limit" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="onboarding-actions" style="margin-top:16px">
+            <button class="btn ghost" id="btnBackToStep2">← Back</button>
+            <button class="btn primary" id="btnContinueOnboarding">Optimize & Plan Pond →</button>
           </div>
         </div>
       </div>
@@ -88,8 +182,10 @@
       </div>
     </div>
 
-    <!-- Right Panel Toggle (tablet/mobile) -->
-    <button id="panelToggle" class="panel-toggle-btn" title="Toggle results panel" style="display:none">☰</button>
+    <!-- Collapsible Panel Toggle -->
+    <button id="panelToggle" class="panel-toggle-btn" title="Toggle results panel" style="display:none">
+      <span class="material-icons" id="panelToggleIcon">chevron_right</span>
+    </button>
 
     <!-- ─── SETTINGS MODAL ─── -->
     <div id="settingsOverlay" class="settings-overlay hidden">
@@ -378,47 +474,106 @@
       const pointCountEl = document.getElementById('drawPointCount');
       const step1 = document.getElementById('step1Content');
       const step2 = document.getElementById('step2Content');
+      const step3 = document.getElementById('step3Content');
       const dots = document.querySelectorAll('.step-dot');
 
       let points = [];
       let activeTool = 'pencil';
       let dragIndex = -1;
-      let cameraTypes = []; // User-configured camera types
+
+      // Local camera models copy to populate selector
+      const cameraPresetModels = [
+        { name: "78 deg CCTV", fov: 78, range: 48 },
+        { name: "4K wide angle", fov: 84, range: 48 },
+        { name: "2MP standard", fov: 72, range: 36 },
+        { name: "8MP telephoto", fov: 44, range: 72 },
+        { name: "12MP survey", fov: 96, range: 55 }
+      ];
+
+      // Populate camera model select
+      const onboardCamModelSelect = document.getElementById('onboardCameraModel');
+      cameraPresetModels.forEach((model, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${model.name} - ${model.fov}° / ${model.range}m`;
+        onboardCamModelSelect.appendChild(option);
+      });
 
       function setStep(n) {
-        const isStep2 = n === 2;
-        step1.style.display = isStep2 ? 'none' : '';
-        step2.style.display = isStep2 ? '' : 'none';
+        step1.style.display = n === 1 ? 'flex' : 'none';
+        step2.style.display = n === 2 ? 'flex' : 'none';
+        step3.style.display = n === 3 ? 'flex' : 'none';
         dots.forEach(d => {
           d.classList.toggle('active', parseInt(d.dataset.step) <= n);
         });
-        if (isStep2 && !cameraTypes.length) addCameraType();
       }
 
       function resizeCanvas() {
         const w = Math.min(wrapper.clientWidth - 4, 660);
         const h = Math.round(w * 0.6);
-        canvas.width = w; canvas.height = h;
-        redraw();
+        if (w > 0 && h > 0) {
+          canvas.width = w;
+          canvas.height = h;
+          redraw();
+        }
       }
 
       function redraw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (canvas.width === 0 || canvas.height === 0) return;
+
         if (points.length < 2) {
-          points.forEach(p => { ctx.fillStyle = '#60a5fa'; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill(); });
+          points.forEach(p => {
+            ctx.fillStyle = '#60a5fa';
+            ctx.beginPath();
+            ctx.arc(p.x * canvas.width, p.y * canvas.height, 4, 0, Math.PI*2);
+            ctx.fill();
+          });
           return;
         }
+
         ctx.fillStyle = 'rgba(59,130,246,0.15)';
-        ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-        points.forEach(p => { ctx.fillStyle = '#93c5fd'; ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI*2); ctx.fill(); });
+        ctx.strokeStyle = '#60a5fa';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x * canvas.width, points[i].y * canvas.height);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        points.forEach(p => {
+          ctx.fillStyle = '#93c5fd';
+          ctx.beginPath();
+          ctx.arc(p.x * canvas.width, p.y * canvas.height, 3.5, 0, Math.PI*2);
+          ctx.fill();
+        });
       }
 
-      function addPoint(x, y) { points.push({x,y}); pointCountEl.textContent = points.length + ' pts'; redraw(); }
-      function findNearVertex(x, y, t=12) { for(let i=0;i<points.length;i++) if(Math.hypot(points[i].x-x,points[i].y-y)<t) return i; return -1; }
-      function setPoints(np) { points = np; pointCountEl.textContent = points.length + ' pts'; redraw(); }
+      function addPoint(x, y) {
+        if (canvas.width === 0 || canvas.height === 0) return;
+        points.push({x: x / canvas.width, y: y / canvas.height});
+        pointCountEl.textContent = points.length + ' pts';
+        redraw();
+      }
+
+      function findNearVertex(x, y, t=12) {
+        if (canvas.width === 0 || canvas.height === 0) return -1;
+        for(let i=0; i<points.length; i++) {
+          const px = points[i].x * canvas.width;
+          const py = points[i].y * canvas.height;
+          if(Math.hypot(px-x, py-y) < t) return i;
+        }
+        return -1;
+      }
+
+      function setPoints(np) {
+        points = np;
+        pointCountEl.textContent = points.length + ' pts';
+        redraw();
+      }
 
       function getScaledPolygon() {
         const len = Number(document.getElementById('onboardLength').value)||100;
@@ -426,7 +581,7 @@
         if(points.length<3) return null;
         const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
         const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
-        const sw=Math.max(1,mxX-mnX),sh=Math.max(1,mxY-mnY);
+        const sw=Math.max(0.0001,mxX-mnX),sh=Math.max(0.0001,mxY-mnY);
         return points.map(p=>[((p.x-mnX)/sw-0.5)*len,((p.y-mnY)/sh-0.5)*wid]);
       }
 
@@ -440,7 +595,13 @@
       });
       canvas.addEventListener('mousemove', e => {
         const rect = canvas.getBoundingClientRect(), mx=e.clientX-rect.left, my=e.clientY-rect.top;
-        if(dragIndex>=0){points[dragIndex]={x:mx,y:my};redraw();return;}
+        if(dragIndex>=0){
+          if(canvas.width > 0 && canvas.height > 0) {
+            points[dragIndex]={x: mx / canvas.width, y: my / canvas.height};
+            redraw();
+          }
+          return;
+        }
         canvas.style.cursor = findNearVertex(mx,my)>=0?'grab':'crosshair';
       });
       canvas.addEventListener('mouseup',()=>{dragIndex=-1;});
@@ -453,7 +614,16 @@
         addPoint(mx,my);
       });
       canvas.addEventListener('touchmove', e => {
-        if(dragIndex>=0){e.preventDefault();const r=canvas.getBoundingClientRect();points[dragIndex]={x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top};redraw();}
+        if(dragIndex>=0){
+          e.preventDefault();
+          const r=canvas.getBoundingClientRect();
+          const mx = e.touches[0].clientX-r.left;
+          const my = e.touches[0].clientY-r.top;
+          if(canvas.width > 0 && canvas.height > 0) {
+            points[dragIndex]={x: mx / canvas.width, y: my / canvas.height};
+            redraw();
+          }
+        }
       });
       canvas.addEventListener('touchend',()=>{dragIndex=-1;});
 
@@ -463,10 +633,38 @@
         document.getElementById(id).addEventListener('click',()=>{
           activeTool=name;document.querySelectorAll('.draw-toolbar .btn').forEach(b=>b.classList.remove('active-tool'));
           document.getElementById(id).classList.add('active-tool');
-          if(name==='rect'){const w=canvas.width*.55,h=canvas.height*.55,ox=(canvas.width-w)/2,oy=(canvas.height-h)/2;const pts=[{x:ox,y:oy},{x:ox+w,y:oy},{x:ox+w,y:oy+h},{x:ox,y:oy+h}];const r=[];for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];for(let j=0;j<=12;j++)r.push({x:a.x+(b.x-a.x)*j/12,y:a.y+(b.y-a.y)*j/12})}setPoints(r);}
-          else if(name==='oval'){const cx=canvas.width/2,cy=canvas.height/2,rx=canvas.width*.28,ry=canvas.height*.28;const pts=[];for(let i=0;i<64;i++){const a=i/64*Math.PI*2;pts.push({x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*ry})}setPoints(pts);}
-          else if(name==='irregular'){const p=[];for(let i=0;i<48;i++){const a=i/48*Math.PI*2,r=canvas.width*.22*(.7+.3*Math.sin(i*2.3));p.push({x:canvas.width/2+Math.cos(a)*r,y:canvas.height/2+Math.sin(a)*r})}setPoints(p);}
-          else if(name==='field'){const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=mxX-mnX,sh=mxY-mnY;const ox=canvas.width*.08,oy=canvas.height*.08,dw=canvas.width*.84,dh=canvas.height*.84;setPoints(bp.map(([x,y])=>({x:ox+((x-mnX)/sw)*dw,y:oy+((y-mnY)/sh)*dh})));}
+          if(name==='rect'){
+            const pts=[{x:0.225,y:0.225},{x:0.775,y:0.225},{x:0.775,y:0.775},{x:0.225,y:0.775}];
+            const r=[];
+            for(let i=0;i<pts.length;i++){
+              const a=pts[i],b=pts[(i+1)%pts.length];
+              for(let j=0;j<=12;j++)r.push({x:a.x+(b.x-a.x)*j/12,y:a.y+(b.y-a.y)*j/12});
+            }
+            setPoints(r);
+          }
+          else if(name==='oval'){
+            const pts=[];
+            for(let i=0;i<64;i++){
+              const a=i/64*Math.PI*2;
+              pts.push({x:0.5+Math.cos(a)*0.28,y:0.5+Math.sin(a)*0.28});
+            }
+            setPoints(pts);
+          }
+          else if(name==='irregular'){
+            const p=[];
+            for(let i=0;i<48;i++){
+              const a=i/48*Math.PI*2,r=0.22*(0.7+0.3*Math.sin(i*2.3));
+              p.push({x:0.5+Math.cos(a)*r,y:0.5+Math.sin(a)*r});
+            }
+            setPoints(p);
+          }
+          else if(name==='field'){
+            const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];
+            const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);
+            const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
+            const sw=mxX-mnX,sh=mxY-mnY;
+            setPoints(bp.map(([x,y])=>({x:0.08+((x-mnX)/sw)*0.84,y:0.08+((y-mnY)/sh)*0.84})));
+          }
         });
       });
 
@@ -475,70 +673,86 @@
       document.getElementById('boundaryFile').addEventListener('change',async function(e){
         const file=e.target.files?.[0];if(!file)return;const text=await file.text();
         const rp=text.split(/\n+/).map(l=>l.trim()).filter(Boolean).map(l=>l.split(/[,\s]+/).filter(Boolean).slice(0,2).map(Number)).filter(p=>p.length===2&&p.every(Number.isFinite));
-        if(rp.length<3)return;const xs=rp.map(p=>p[0]),ys=rp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=Math.max(1,mxX-mnX),sh=Math.max(1,mxY-mnY);const dw=canvas.width*.8,dh=canvas.height*.8,ox=canvas.width*.1,oy=canvas.height*.1;
-        setPoints(rp.map(([x,y])=>({x:ox+((x-mnX)/sw)*dw,y:oy+((y-mnY)/sh)*dh})));
+        if(rp.length<3)return;const xs=rp.map(p=>p[0]),ys=rp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=Math.max(1,mxX-mnX),sh=Math.max(1,mxY-mnY);
+        setPoints(rp.map(([x,y])=>({x:0.1+((x-mnX)/sw)*0.8,y:0.1+((y-mnY)/sh)*0.8})));
         document.getElementById('onboardLength').value=Math.round(sw*1.2);document.getElementById('onboardWidth').value=Math.round(sh*1.2);
       });
 
       // Step navigation
-      document.getElementById('btnToStep2').addEventListener('click',()=>setStep(2));
-      document.getElementById('btnBackToStep1').addEventListener('click',()=>setStep(1));
+      document.getElementById('btnToStep2').addEventListener('click', () => setStep(2));
+      document.getElementById('btnBackToStep1').addEventListener('click', () => setStep(1));
+      document.getElementById('btnToStep3').addEventListener('click', () => setStep(3));
+      document.getElementById('btnBackToStep2').addEventListener('click', () => setStep(2));
 
-      // Camera type management
-      function addCameraType() {
-        const defaultModel = cameraModels[0];
-        cameraTypes.push({
-          name: defaultModel.name, fov: defaultModel.fov, range: defaultModel.range,
-          resW: defaultModel.resolutionW, resH: defaultModel.resolutionH,
-          cost: defaultModel.cost, minHeight: 3, maxHeight: 8
-        });
-        renderCameraTypes();
-      }
-
-      function removeCameraType(idx) { cameraTypes.splice(idx,1); renderCameraTypes(); }
-
-      function renderCameraTypes() {
-        const list = document.getElementById('cameraTypesList');
-        list.innerHTML = cameraTypes.map((ct, i) => `
-          <div class="section-box" style="margin:0">
-            <div class="section-title">
-              <strong style="font-size:13px">Camera Type ${i+1}</strong>
-              <button class="btn ghost" style="min-height:24px;font-size:11px;padding:0 8px" onclick="removeCameraType(${i})">Remove</button>
-            </div>
-            <div class="grid two">
-              <label>Model<select onchange="updateCameraType(${i},'name',this.value)">${cameraModels.map((m,j)=>`<option value="${m.name}" ${m.name===ct.name?'selected':''}>${m.name}</option>`).join('')}</select></label>
-              <label>FOV°<input type="number" value="${ct.fov}" min="15" max="160" oninput="updateCameraType(${i},'fov',+this.value)" /></label>
-              <label>Range m<input type="number" value="${ct.range}" min="2" max="180" oninput="updateCameraType(${i},'range',+this.value)" /></label>
-              <label>Resolution W<input type="number" value="${ct.resW}" min="320" oninput="updateCameraType(${i},'resW',+this.value)" /></label>
-              <label>Resolution H<input type="number" value="${ct.resH}" min="240" oninput="updateCameraType(${i},'resH',+this.value)" /></label>
-              <label>Cost ₹<input type="number" value="${ct.cost}" min="0" oninput="updateCameraType(${i},'cost',+this.value)" /></label>
-              <label>Min Height<input type="number" value="${ct.minHeight}" min="0.5" step="0.5" oninput="updateCameraType(${i},'minHeight',+this.value)" /></label>
-              <label>Max Height<input type="number" value="${ct.maxHeight}" min="0.5" step="0.5" oninput="updateCameraType(${i},'maxHeight',+this.value)" /></label>
-            </div>
-          </div>
-        `).join('');
-      }
-
-      window.updateCameraType = function(idx, key, val) {
-        if (cameraTypes[idx]) cameraTypes[idx][key] = val;
+      // Bird species presets selection
+      const presetCardsList = ['presetSmall', 'presetMedium', 'presetLarge'];
+      const birdSpecs = {
+        presetSmall: { length: 0.15, width: 0.08, detect: 18, track: 32 },
+        presetMedium: { length: 0.35, width: 0.18, detect: 18, track: 32 },
+        presetLarge: { length: 0.90, width: 0.45, detect: 18, track: 32 }
       };
-      window.removeCameraType = removeCameraType;
 
-      document.getElementById('btnAddCameraType').addEventListener('click', addCameraType);
+      presetCardsList.forEach(id => {
+        const card = document.getElementById(id);
+        if (card) {
+          card.addEventListener('click', () => {
+            presetCardsList.forEach(cid => {
+              document.getElementById(cid).classList.toggle('active', cid === id);
+            });
+            const specs = birdSpecs[id];
+            document.getElementById('onboardBirdLength').value = specs.length;
+            document.getElementById('onboardBirdWidth').value = specs.width;
+            document.getElementById('onboardDetectPixels').value = specs.detect;
+            document.getElementById('onboardTrackPixels').value = specs.track;
+          });
+        }
+      });
 
-      // Continue
+      // Sync onboarding values into main inputs before starting optimization
+      function syncOnboardingToMain() {
+        document.getElementById('pondLength').value = document.getElementById('onboardLength').value;
+        document.getElementById('pondWidth').value = document.getElementById('onboardWidth').value;
+
+        document.getElementById('birdLength').value = document.getElementById('onboardBirdLength').value;
+        document.getElementById('birdWidth').value = document.getElementById('onboardBirdWidth').value;
+        document.getElementById('detectPixels').value = document.getElementById('onboardDetectPixels').value;
+        document.getElementById('trackPixels').value = document.getElementById('onboardTrackPixels').value;
+        document.getElementById('confidenceInput').value = document.getElementById('onboardConfidence').value;
+
+        document.getElementById('cameraModel').value = document.getElementById('onboardCameraModel').value;
+        document.getElementById('minHeight').value = document.getElementById('onboardMinHeight').value;
+        document.getElementById('maxHeight').value = document.getElementById('onboardMaxHeight').value;
+        
+        document.getElementById('centerPoleEnabled').checked = document.getElementById('onboardCenterPoleEnabled').checked;
+        document.getElementById('centerPoleCount').value = document.getElementById('onboardCenterPoleCount').value;
+        document.getElementById('centerPoleFov').value = document.getElementById('onboardCenterPoleFov').value;
+        
+        document.getElementById('requiredCoverage').value = document.getElementById('onboardCoverage').value;
+
+        const budget = document.getElementById('onboardBudget').value;
+        document.getElementById('budgetInput').value = budget ? budget : '';
+
+        const maxCams = document.getElementById('onboardMaxCameras').value;
+        document.getElementById('cameraCount').value = maxCams ? maxCams : '';
+
+        // Trigger change event to initialize camera resolution/range specs
+        document.getElementById('cameraModel').dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      // Continue to Plan
       document.getElementById('btnContinueOnboarding').addEventListener('click', () => {
+        syncOnboardingToMain();
         const poly = getScaledPolygon();
         if (poly && poly.length >= 3) window.__onboardPolygon = poly;
-        window.__onboardCameraTypes = cameraTypes.length ? cameraTypes : null;
         document.getElementById('loadingOverlay').classList.remove('hidden');
         document.getElementById('loadingText').textContent = 'Setting up your pond...';
         setTimeout(() => finishOnboarding(), 100);
       });
 
       document.getElementById('btnSkipOnboarding').addEventListener('click', () => {
+        // Run with current default onboarding inputs
+        syncOnboardingToMain();
         window.__onboardPolygon = null;
-        window.__onboardCameraTypes = null;
         document.getElementById('loadingOverlay').classList.remove('hidden');
         document.getElementById('loadingText').textContent = 'Setting up your pond...';
         setTimeout(() => finishOnboarding(), 100);
@@ -548,13 +762,26 @@
         overlay.classList.add('hidden');
         document.getElementById('rightPanel').style.display = '';
         document.getElementById('bottomPanel').style.display = '';
+        document.getElementById('panelToggle').style.display = 'flex';
         if (window.__onboardDone) window.__onboardDone(window.__onboardPolygon || null);
       }
 
       resizeCanvas();
       window.addEventListener('resize', resizeCanvas);
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => resizeCanvas());
+        ro.observe(wrapper);
+      }
+
       // Default field sample on load
-      { const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);const sw=mxX-mnX,sh=mxY-mnY;const ox=canvas.width*.08,oy=canvas.height*.08,dw=canvas.width*.84,dh=canvas.height*.84;setPoints(bp.map(([x,y])=>({x:ox+((x-mnX)/sw)*dw,y:oy+((y-mnY)/sh)*dh}))); }
+      {
+        const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];
+        const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);
+        const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
+        const sw=mxX-mnX,sh=mxY-mnY;
+        points = bp.map(([x,y])=>({x:0.08+((x-mnX)/sw)*0.84,y:0.08+((y-mnY)/sh)*0.84}));
+        pointCountEl.textContent = points.length + ' pts';
+      }
       window.__getOnboardPolygon = getScaledPolygon;
     })();
     </script>
@@ -652,13 +879,16 @@
         tuneCameraToggle.classList.add('open');
       }
 
-      // ── Right panel toggle (tablet/mobile) ──
+      // ── Right panel collapse toggle ──
       const panelToggle = document.getElementById('panelToggle');
       const rightPanel = document.getElementById('rightPanel');
+      const panelToggleIcon = document.getElementById('panelToggleIcon');
       panelToggle.addEventListener('click', () => {
-        rightPanel.classList.toggle('open');
-        panelToggle.classList.toggle('panel-open', rightPanel.classList.contains('open'));
-        panelToggle.textContent = rightPanel.classList.contains('open') ? '✕' : '☰';
+        const isCollapsed = rightPanel.classList.toggle('collapsed');
+        panelToggle.classList.toggle('collapsed', isCollapsed);
+        if (panelToggleIcon) {
+          panelToggleIcon.textContent = isCollapsed ? 'chevron_left' : 'chevron_right';
+        }
       });
     })();
     </script>

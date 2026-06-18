@@ -629,6 +629,7 @@ function renderPond(result) {
   const pondMesh = new THREE.Mesh(pondGeo, createWaterMaterial());
   pondMesh.rotation.x = -Math.PI / 2;
   pondMesh.position.y = 0.01;
+  pondMesh.renderOrder = 1; // Explicit renderOrder below heatmap (2) and boundary (3)
   state.rootGroup.add(pondMesh);
 
   const linePoints = result.polygon.concat([result.polygon[0]]).map((point) => new THREE.Vector3(point[0], 0.22, -point[1]));
@@ -636,6 +637,7 @@ function renderPond(result) {
     new THREE.BufferGeometry().setFromPoints(linePoints),
     new THREE.LineBasicMaterial({ color: 0xbae6fd, linewidth: 2, transparent: true, opacity: 0.9 })
   );
+  boundary.renderOrder = 3; // Render boundary line on top of everything
   state.rootGroup.add(boundary);
 
   const box = bounds(result.polygon);
@@ -776,12 +778,6 @@ function createWaterMaterial() {
         float shimmer = sin(uv.x * 0.4 + uTime * 2.0) * sin(uv.y * 0.4 + uTime * 1.7);
         color += vec3(0.1, 0.22, 0.35) * shimmer * 0.05;
 
-        // Grid
-        float gridX = abs(fract(vWorldPos.x / 8.0 + 0.5) - 0.5);
-        float gridZ = abs(fract(vWorldPos.z / 8.0 + 0.5) - 0.5);
-        float gridLine = 1.0 - smoothstep(0.0, 0.025, min(gridX, gridZ));
-        color = mix(color, vec3(0.5, 0.7, 0.85), gridLine * 0.1);
-
         gl_FragColor = vec4(color, 0.9);
       }
     `
@@ -801,6 +797,7 @@ function renderHeatmap() {
     const tile = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material);
     tile.rotation.x = -Math.PI / 2;
     tile.position.set(cell.point[0], 0.08, -cell.point[1]);
+    tile.renderOrder = 2; // Render heatmap on top of water (1), but below boundary (3)
     state.heatmapGroup.add(tile);
   });
 }

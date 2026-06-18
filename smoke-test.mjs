@@ -113,6 +113,9 @@ const context = {
     querySelectorAll(selector) {
       return selector === ".tab" ? tabStubs : [];
     },
+    getElementById(id) {
+      return getElement(id);
+    },
     createElement(tag) {
       return new ElementStub(tag);
     }
