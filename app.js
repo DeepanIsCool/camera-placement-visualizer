@@ -1070,6 +1070,7 @@ function renderOutputs(result) {
 function syncManualPanel() {
   const camera = state.result?.selected[state.selectedCameraIndex];
   if (!camera) return;
+  state.isSyncingManualPanel = true;
   el.selectedCameraName.textContent = `${camera.deploymentId} · ${camera.source}`;
   setSyncedValue("manualHeight", camera.height);
   setSyncedValue("manualYaw", camera.heading);
@@ -1077,9 +1078,11 @@ function syncManualPanel() {
   setSyncedValue("manualFov", camera.fov);
   setSyncedValue("manualRange", camera.range);
   setSyncedValue("manualArmLength", camera.armLength || 1.8);
+  state.isSyncingManualPanel = false;
 }
 
 function applyManualCameraEdit() {
+  if (state.isSyncingManualPanel) return;
   const camera = state.result?.selected[state.selectedCameraIndex];
   if (!camera) return;
   camera.height = number("manualHeight");
@@ -1128,9 +1131,13 @@ function refreshManualCameraCoverage(camera) {
 }
 
 function setSyncedValue(id, nextValue) {
-  el[id].value = round(nextValue, 2);
-  const slider = document.querySelector(`[data-slider-for="${id}"]`);
-  if (slider) slider.value = round(nextValue, 2);
+  const input = el[id];
+  if (input) {
+    input.value = round(nextValue, 2);
+    const slider = document.querySelector(`[data-slider-for="${id}"]`);
+    if (slider) slider.value = round(nextValue, 2);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 
 function enhanceControls() {

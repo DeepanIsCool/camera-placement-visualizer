@@ -811,16 +811,98 @@
 
         slider.addEventListener('input', () => {
           input.value = slider.value;
-          if (valEl) valEl.textContent = slider.value + suffix;
+          if (valEl && !valEl.dataset.editing) valEl.textContent = slider.value + suffix;
           input.dispatchEvent(new Event('input', {bubbles:true}));
         });
         input.addEventListener('input', () => {
           if (input.value !== '') {
             slider.value = input.value;
-            if (valEl) valEl.textContent = input.value + suffix;
+            if (valEl && !valEl.dataset.editing) valEl.textContent = input.value + suffix;
           }
         });
-        if (valEl) valEl.textContent = slider.value + suffix;
+        if (valEl) {
+          if (inputId !== 'timeOfDay') {
+            valEl.textContent = slider.value + suffix;
+          }
+        }
+
+        // ── Click-to-edit functionality ──
+        if (valEl) {
+          valEl.style.cursor = 'pointer';
+          valEl.title = 'Click to type value directly';
+          
+          valEl.addEventListener('click', () => {
+            if (valEl.dataset.editing === 'true') return;
+            valEl.dataset.editing = 'true';
+
+            // Create temporary inline input
+            const editInput = document.createElement('input');
+            editInput.type = 'number';
+            editInput.value = input.value;
+            editInput.min = input.min;
+            editInput.max = input.max;
+            editInput.step = input.step || '1';
+
+            // Style matching the premium glass/slate design
+            editInput.style.width = '60px';
+            editInput.style.height = '18px';
+            editInput.style.border = '1px solid var(--blue)';
+            editInput.style.borderRadius = '4px';
+            editInput.style.background = 'var(--surface)';
+            editInput.style.color = 'var(--ink)';
+            editInput.style.padding = '0 4px';
+            editInput.style.textAlign = 'right';
+            editInput.style.fontSize = '12px';
+            editInput.style.outline = 'none';
+            editInput.style.fontFamily = 'inherit';
+            editInput.style.boxShadow = '0 0 8px rgba(56, 139, 253, 0.3)';
+
+            valEl.style.display = 'none';
+            valEl.parentNode.appendChild(editInput);
+            editInput.focus();
+            editInput.select();
+
+            const saveVal = () => {
+              let val = parseFloat(editInput.value);
+              if (isNaN(val)) {
+                val = parseFloat(input.value);
+              }
+              // Clamp value to min and max attributes
+              const minVal = parseFloat(input.min);
+              const maxVal = parseFloat(input.max);
+              if (!isNaN(minVal) && val < minVal) val = minVal;
+              if (!isNaN(maxVal) && val > maxVal) val = maxVal;
+
+              input.value = val;
+              slider.value = val;
+              input.dispatchEvent(new Event('input', {bubbles:true}));
+
+              if (inputId !== 'timeOfDay') {
+                valEl.textContent = val + suffix;
+              }
+              cleanup();
+            };
+
+            const cancelVal = () => {
+              cleanup();
+            };
+
+            const cleanup = () => {
+              editInput.remove();
+              valEl.style.display = '';
+              delete valEl.dataset.editing;
+            };
+
+            editInput.addEventListener('blur', saveVal);
+            editInput.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                saveVal();
+              } else if (e.key === 'Escape') {
+                cancelVal();
+              }
+            });
+          });
+        }
       });
 
       // ── Settings Modal ──
