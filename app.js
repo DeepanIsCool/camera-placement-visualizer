@@ -762,12 +762,12 @@ function createWaterMaterial() {
         color *= 0.45 + 0.55 * diff;
 
         // Specular
-        vec3 H = normalize(L + V);
+        vec3 H = (length(L + V) > 0.0001) ? normalize(L + V) : vec3(0.0, 1.0, 0.0);
         float spec = pow(max(dot(N, H), 0.0), 120.0);
         color += vec3(1.0, 0.97, 0.9) * spec * 0.75;
 
-        // Fresnel
-        float fresnel = pow(1.0 - abs(dot(N, V)), 2.5);
+        // Fresnel (clamp base to prevent negative pow inputs due to precision issues)
+        float fresnel = pow(max(1.0 - abs(dot(N, V)), 0.0), 2.5);
         color += vec3(0.15, 0.35, 0.5) * fresnel * 0.3;
 
         // Foam
