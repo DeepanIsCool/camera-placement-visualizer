@@ -36,6 +36,35 @@
             <div class="draw-canvas-grid"></div>
             <canvas id="drawCanvas" width="660" height="400"></canvas>
           </div>
+          <div class="map-wrapper" id="mapWrapper" style="display: none;">
+            <div id="mapKeyOverlay" class="map-key-overlay">
+              <h3>Google Maps Integration</h3>
+              <p>Enter a Google Maps API Key to load interactive satellite view and search. The key will be stored securely in your browser's local storage.</p>
+              <div class="map-key-input-row">
+                <input type="password" id="gmapsApiKey" placeholder="Enter API Key (AIzaSy...)" />
+                <button id="btnInitMap" class="btn primary">Load Map</button>
+              </div>
+              <a href="https://console.cloud.google.com/google/maps-apis/overview" target="_blank" class="map-key-help-link">
+                How do I get a Google Maps API Key?
+              </a>
+            </div>
+            <div id="mapSearchContainer" class="map-search-container" style="display: none;">
+              <input type="text" id="mapSearchInput" placeholder="Search address, coordinates..." style="max-width: 180px;" />
+              <button id="btnMapSearch" class="btn secondary">Search</button>
+              <div style="flex: 1;"></div>
+              <button id="btnMapDraw" class="btn primary" type="button" title="Draw Pond Shape"><span class="material-icons md-16">create</span> Draw</button>
+              <button id="btnMapFinish" class="btn primary" type="button" title="Finish Drawing" style="display: none; background: #10b981; border-color: #10b981;"><span class="material-icons md-16">done</span> Finish</button>
+              <button id="btnMapCancel" class="btn secondary" type="button" title="Cancel Drawing" style="display: none;"><span class="material-icons md-16">close</span> Cancel</button>
+              <button id="btnMapDivider" class="btn secondary" type="button" title="Add Land Divider" style="display: none;"><span class="material-icons md-16">add</span> Divider</button>
+              <button id="btnMapClear" class="btn danger" type="button" title="Clear All" style="display: none;"><span class="material-icons md-16">delete</span> Clear</button>
+            </div>
+            <div id="mapCanvas" style="position: relative;"></div>
+            <!-- Realtime Dimensions Badge -->
+            <div id="mapDimensionsBadge" style="position: absolute; bottom: 10px; left: 10px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--line-strong); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 11px; color: var(--ink); z-index: 100; font-family: var(--font-mono); display: none; flex-direction: column; gap: 3px; pointer-events: none;">
+              <div><strong>Bounds:</strong> <span id="badgeDims">-</span></div>
+              <div><strong>Surface Area:</strong> <span id="badgeArea">-</span></div>
+            </div>
+          </div>
           <div class="draw-toolbar">
             <div class="toolbar-group">
               <button class="btn tool-btn active-tool" id="toolPencil" type="button" title="Pencil Tool"><span class="material-icons md-16">edit</span> Pencil</button>
@@ -43,8 +72,10 @@
               <button class="btn tool-btn" id="toolOval" type="button" title="Oval Preset"><span class="material-icons md-16">radio_button_unchecked</span> Oval</button>
               <button class="btn tool-btn" id="toolIrregular" type="button" title="Irregular Preset"><span class="material-icons md-16">gesture</span> Irregular</button>
               <button class="btn tool-btn" id="toolField" type="button" title="Field Sample Preset"><span class="material-icons md-16">map</span> Field</button>
+              <button class="btn tool-btn" id="toolMap" type="button" title="Import from Google Maps"><span class="material-icons md-16">public</span> Google Maps</button>
             </div>
             <div class="toolbar-group" style="margin-left: auto;">
+              <button class="btn tool-btn secondary" id="toolResetKey" type="button" title="Reset API Key" style="display: none;"><span class="material-icons md-16">vpn_key</span> Reset Key</button>
               <button class="btn tool-btn secondary" id="toolImport" type="button" title="Import Boundary CSV"><span class="material-icons md-16">upload_file</span> Import</button>
               <button class="btn tool-btn danger" id="toolClear" type="button" title="Clear Canvas"><span class="material-icons md-16">delete_outline</span> Clear</button>
             </div>
@@ -60,8 +91,8 @@
               </label>
             </div>
             <div class="onboarding-actions" style="margin-top:0">
-              <button class="btn ghost" id="btnSkipOnboarding" type="button">Skip, use defaults</button>
-              <button class="btn primary" id="btnToStep2" type="button">Next: Detection Targets →</button>
+              <button class="btn ghost" id="btnSkipOnboarding" type="button">Skip</button>
+              <button class="btn primary" id="btnToStep2" type="button">Next</button>
             </div>
           </div>
         </div>
@@ -77,17 +108,14 @@
             <div class="preset-card" id="presetSmall">
               <span class="material-icons preset-icon" style="color: var(--blue)">flutter_dash</span>
               <span class="preset-title">Small Bird</span>
-              <span class="preset-desc">Sparrows, Swallows (15cm)</span>
             </div>
             <div class="preset-card active" id="presetMedium">
-              <span class="material-icons preset-icon" style="color: var(--orange)">pets</span>
+              <span class="material-icons preset-icon" style="color: var(--blue)">pets</span>
               <span class="preset-title">Medium Bird</span>
-              <span class="preset-desc">Pigeons, Ducks (35cm)</span>
             </div>
             <div class="preset-card" id="presetLarge">
-              <span class="material-icons preset-icon" style="color: var(--teal)">flight</span>
+              <span class="material-icons preset-icon" style="color: var(--blue)">cruelty_free</span>
               <span class="preset-title">Large Bird</span>
-              <span class="preset-desc">Herons, Cranes (90cm)</span>
             </div>
           </div>
 
@@ -103,8 +131,8 @@
           </div>
 
           <div class="onboarding-actions">
-            <button class="btn ghost" id="btnBackToStep1">← Back</button>
-            <button class="btn primary" id="btnToStep3">Next: Camera Setup →</button>
+            <button class="btn ghost" id="btnBackToStep1">Back</button>
+            <button class="btn primary" id="btnToStep3">Next</button>
           </div>
         </div>
 
@@ -112,31 +140,29 @@
         <div id="step3Content" style="display:none">
           <div>
             <h1>Infrastructure & Rules</h1>
-            <p>Select your camera model, mounting limits, and optimization constraints.</p>
+            <p>Define constraints for placement and budget to find the most cost-effective arrangement.</p>
           </div>
 
           <div class="grid two" style="gap:16px">
             <div>
-              <h3 style="font-size:12px;color:var(--blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Hardware & Mounts</h3>
+              <h3 style="font-size:12px;color:var(--blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Mounting Infrastructure</h3>
               <div style="display:flex;flex-direction:column;gap:8px">
-                <label>Primary Camera Model
-                  <select id="onboardCameraModel" style="width:100%"></select>
-                </label>
-                <div class="grid two">
-                  <label>Min height (m)<input id="onboardMinHeight" type="number" min="0.5" step="0.5" value="3" /></label>
-                  <label>Max height (m)<input id="onboardMaxHeight" type="number" min="0.5" step="0.5" value="8" /></label>
-                </div>
-              </div>
-
-              <h3 style="font-size:12px;color:var(--blue);margin-top:16px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Middle Pole Array</h3>
-              <div style="display:flex;flex-direction:column;gap:8px">
-                <label class="switch-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)">
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600">
                   <input id="onboardCenterPoleEnabled" type="checkbox" checked style="width:15px;height:15px" /> Enable central pole mounting array
                 </label>
                 <div class="grid two">
                   <label>Cameras count<input id="onboardCenterPoleCount" type="number" min="1" max="12" step="1" value="5" /></label>
                   <label>Camera FOV (°)<input id="onboardCenterPoleFov" type="number" min="15" max="160" step="1" value="78" /></label>
                 </div>
+              </div>
+
+              <h3 style="font-size:12px;color:var(--blue);margin-top:16px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Hardware Limits</h3>
+              <label style="margin-bottom:8px;display:block">Camera Model
+                <select id="onboardCameraModel" style="width:100%"></select>
+              </label>
+              <div class="grid two">
+                  <label>Min height (m)<input id="onboardMinHeight" type="number" min="0.5" step="0.5" value="3" /></label>
+                  <label>Max height (m)<input id="onboardMaxHeight" type="number" min="0.5" step="0.5" value="8" /></label>
               </div>
             </div>
 
@@ -157,8 +183,8 @@
           </div>
 
           <div class="onboarding-actions" style="margin-top:16px">
-            <button class="btn ghost" id="btnBackToStep2">← Back</button>
-            <button class="btn primary" id="btnContinueOnboarding">Optimize & Plan Pond →</button>
+            <button class="btn ghost" id="btnBackToStep2">Back</button>
+            <button class="btn primary" id="btnContinueOnboarding">Optimize</button>
           </div>
         </div>
       </div>
@@ -628,45 +654,658 @@
       canvas.addEventListener('touchend',()=>{dragIndex=-1;});
 
       // Tool buttons
-      const tools={toolPencil:'pencil',toolRect:'rect',toolOval:'oval',toolIrregular:'irregular',toolField:'field'};
-      Object.entries(tools).forEach(([id,name])=>{
-        document.getElementById(id).addEventListener('click',()=>{
-          activeTool=name;document.querySelectorAll('.draw-toolbar .btn').forEach(b=>b.classList.remove('active-tool'));
+      const tools = {
+        toolPencil: 'pencil',
+        toolRect: 'rect',
+        toolOval: 'oval',
+        toolIrregular: 'irregular',
+        toolField: 'field',
+        toolMap: 'map'
+      };
+
+      Object.entries(tools).forEach(([id, name]) => {
+        document.getElementById(id).addEventListener('click', () => {
+          activeTool = name;
+          document.querySelectorAll('.draw-toolbar .btn').forEach(b => b.classList.remove('active-tool'));
           document.getElementById(id).classList.add('active-tool');
-          if(name==='rect'){
-            const pts=[{x:0.225,y:0.225},{x:0.775,y:0.225},{x:0.775,y:0.775},{x:0.225,y:0.775}];
-            const r=[];
-            for(let i=0;i<pts.length;i++){
-              const a=pts[i],b=pts[(i+1)%pts.length];
-              for(let j=0;j<=12;j++)r.push({x:a.x+(b.x-a.x)*j/12,y:a.y+(b.y-a.y)*j/12});
+
+          // Toggle wrappers
+          if (name === 'map') {
+            document.getElementById('drawCanvasWrapper').style.display = 'none';
+            document.getElementById('mapWrapper').style.display = 'flex';
+            document.getElementById('toolResetKey').style.display = localStorage.getItem('google_maps_api_key') ? 'inline-flex' : 'none';
+            checkAndLoadMap();
+          } else {
+            document.getElementById('drawCanvasWrapper').style.display = 'block';
+            document.getElementById('mapWrapper').style.display = 'none';
+            document.getElementById('toolResetKey').style.display = 'none';
+            if (clearDrawingState) {
+              clearDrawingState();
             }
-            setPoints(r);
-          }
-          else if(name==='oval'){
-            const pts=[];
-            for(let i=0;i<64;i++){
-              const a=i/64*Math.PI*2;
-              pts.push({x:0.5+Math.cos(a)*0.28,y:0.5+Math.sin(a)*0.28});
+
+            if (name === 'rect') {
+              const pts = [{ x: 0.225, y: 0.225 }, { x: 0.775, y: 0.225 }, { x: 0.775, y: 0.775 }, { x: 0.225, y: 0.775 }];
+              const r = [];
+              for (let i = 0; i < pts.length; i++) {
+                const a = pts[i], b = pts[(i + 1) % pts.length];
+                for (let j = 0; j <= 12; j++) r.push({ x: a.x + (b.x - a.x) * j / 12, y: a.y + (b.y - a.y) * j / 12 });
+              }
+              setPoints(r);
             }
-            setPoints(pts);
-          }
-          else if(name==='irregular'){
-            const p=[];
-            for(let i=0;i<48;i++){
-              const a=i/48*Math.PI*2,r=0.22*(0.7+0.3*Math.sin(i*2.3));
-              p.push({x:0.5+Math.cos(a)*r,y:0.5+Math.sin(a)*r});
+            else if (name === 'oval') {
+              const pts = [];
+              for (let i = 0; i < 64; i++) {
+                const a = i / 64 * Math.PI * 2;
+                pts.push({ x: 0.5 + Math.cos(a) * 0.28, y: 0.5 + Math.sin(a) * 0.28 });
+              }
+              setPoints(pts);
             }
-            setPoints(p);
-          }
-          else if(name==='field'){
-            const bp=[[6,12],[18,7],[39,8],[51,15],[63,10],[82,13],[95,27],[89,45],[97,62],[80,76],[58,72],[42,82],[21,75],[12,57],[3,43]];
-            const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);
-            const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
-            const sw=mxX-mnX,sh=mxY-mnY;
-            setPoints(bp.map(([x,y])=>({x:0.08+((x-mnX)/sw)*0.84,y:0.08+((y-mnY)/sh)*0.84})));
+            else if (name === 'irregular') {
+              const p = [];
+              for (let i = 0; i < 48; i++) {
+                const a = i / 48 * Math.PI * 2, r = 0.22 * (0.7 + 0.3 * Math.sin(i * 2.3));
+                p.push({ x: 0.5 + Math.cos(a) * r, y: 0.5 + Math.sin(a) * r });
+              }
+              setPoints(p);
+            }
+            else if (name === 'field') {
+              const bp = [[6, 12], [18, 7], [39, 8], [51, 15], [63, 10], [82, 13], [95, 27], [89, 45], [97, 62], [80, 76], [58, 72], [42, 82], [21, 75], [12, 57], [3, 43]];
+              const xs = bp.map(p => p[0]), ys = bp.map(p => p[1]);
+              const mnX = Math.min(...xs), mxX = Math.max(...xs), mnY = Math.min(...ys), mxY = Math.max(...ys);
+              const sw = mxX - mnX, sh = mxY - mnY;
+              setPoints(bp.map(([x, y]) => ({ x: 0.08 + ((x - mnX) / sw) * 0.84, y: 0.08 + ((y - mnY) / sh) * 0.84 })));
+            }
           }
         });
       });
+
+      // API Key Reset
+      document.getElementById('toolResetKey').addEventListener('click', () => {
+        if (confirm('Are you sure you want to reset the Google Maps API Key?')) {
+          localStorage.removeItem('google_maps_api_key');
+          if (currentMapPolygon) {
+            currentMapPolygon.setMap(null);
+            currentMapPolygon = null;
+          }
+          checkAndLoadMap();
+        }
+      });
+
+      // Google Maps Loading & Drawing Logic
+      function checkAndLoadMap() {
+        const storedKey = localStorage.getItem('google_maps_api_key');
+        if (storedKey) {
+          document.getElementById('mapKeyOverlay').style.display = 'none';
+          document.getElementById('mapSearchContainer').style.display = 'flex';
+          document.getElementById('toolResetKey').style.display = 'inline-flex';
+          loadGoogleMapsScript(storedKey);
+        } else {
+          document.getElementById('mapKeyOverlay').style.display = 'flex';
+          document.getElementById('mapSearchContainer').style.display = 'none';
+          document.getElementById('toolResetKey').style.display = 'none';
+        }
+      }
+
+      document.getElementById('btnInitMap').addEventListener('click', () => {
+        const key = document.getElementById('gmapsApiKey').value.trim();
+        if (!key) {
+          alert('Please enter a valid Google Maps API Key.');
+          return;
+        }
+        localStorage.setItem('google_maps_api_key', key);
+        checkAndLoadMap();
+      });
+
+      let mapsLoaded = false;
+      function loadGoogleMapsScript(key) {
+        if (mapsLoaded) {
+          initGoogleMap();
+          return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=drawing,places,geometry&callback=initGoogleMap`;
+        script.async = true;
+        script.defer = true;
+        script.onerror = () => {
+          alert('Failed to load Google Maps. Please verify your API Key or connection.');
+          localStorage.removeItem('google_maps_api_key');
+          checkAndLoadMap();
+        };
+        document.head.appendChild(script);
+        mapsLoaded = true;
+      }
+
+      let map = null;
+      let drawingManager = null;
+      let currentMapPolygon = null;
+      let activeMapPath = [];
+      let mapMarkers = [];
+      let drawingPolyline = null;
+      let mapClickListener = null;
+      let clearDrawingState = null;
+      let dividerLatLngsList = [];
+      let dividerMarkersList = [];
+      let dividerLines = [];
+
+      let currentDividerLatLngs = [];
+      let currentDividerMarkers = [];
+      let dividerLine = null;
+      let isDrawingDivider = false;
+
+      window.initGoogleMap = function() {
+        const mapCanvas = document.getElementById('mapCanvas');
+        if (!mapCanvas) return;
+
+        // Default location: Central Park Reservoir Lake
+        const defaultLatLng = { lat: 40.7865, lng: -73.9625 };
+        
+        map = new google.maps.Map(mapCanvas, {
+          center: defaultLatLng,
+          zoom: 17,
+          mapTypeId: 'hybrid',
+          tilt: 0,
+          disableDefaultUI: false,
+          mapTypeControl: true,
+          zoomControl: true,
+          streetViewControl: false
+        });
+
+        // Search autocomplete
+        const searchInput = document.getElementById('mapSearchInput');
+        const searchBtn = document.getElementById('btnMapSearch');
+        const autocomplete = new google.maps.places.Autocomplete(searchInput);
+        autocomplete.bindTo('bounds', map);
+
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (!place.geometry || !place.geometry.location) return;
+          
+          if (place.geometry.viewport) {
+            map.fitBounds(place.geometry.viewport);
+          } else {
+            map.setCenter(place.geometry.location);
+            map.setZoom(18);
+          }
+        });
+
+        function parseCoordinates(input) {
+          const clean = input.trim();
+          if (!clean) return null;
+
+          // 1. Decimal Degrees
+          const ddRegex = /^[-+]?([1-8]?\d(?:\.\d+)?|90(?:\.0+)?)[,\s]+[-+]?(180(?:\.0+)?|(?:(?:1[0-7]\d)|(?:[1-9]?\d))(?:\.\d+)?)$/;
+          const ddMatch = clean.match(ddRegex);
+          if (ddMatch) {
+            return { lat: parseFloat(ddMatch[1]), lng: parseFloat(ddMatch[2]) };
+          }
+
+          // 2. Degrees/Minutes/Seconds or Degrees/Decimal Minutes (DMS / DDM)
+          const latDirMatch = clean.match(/[NS]/i);
+          const lngDirMatch = clean.match(/[EW]/i);
+
+          if (latDirMatch && lngDirMatch) {
+            const latIdx = clean.indexOf(latDirMatch[0]);
+            const latStr = clean.substring(0, latIdx + 1).trim();
+            const lngStr = clean.substring(latIdx + 1).trim();
+
+            const latVal = parseSingleCoordinate(latStr);
+            const lngVal = parseSingleCoordinate(lngStr);
+
+            if (latVal !== null && lngVal !== null) {
+              return { lat: latVal, lng: lngVal };
+            }
+          }
+          
+          const parts = clean.split(',');
+          if (parts.length === 2) {
+            const latVal = parseSingleCoordinate(parts[0]);
+            const lngVal = parseSingleCoordinate(parts[1]);
+            if (latVal !== null && lngVal !== null) {
+              return { lat: latVal, lng: lngVal };
+            }
+          }
+
+          return null;
+        }
+
+        function parseSingleCoordinate(str) {
+          const clean = str.trim().toUpperCase();
+          if (!clean) return null;
+
+          let multiplier = 1;
+          if (clean.includes('S') || clean.includes('W') || clean.startsWith('-')) {
+            multiplier = -1;
+          }
+
+          const numbers = clean.match(/\d+(?:\.\d+)?/g);
+          if (!numbers || numbers.length === 0) return null;
+
+          let deg = parseFloat(numbers[0]);
+          let min = numbers.length > 1 ? parseFloat(numbers[1]) : 0;
+          let sec = numbers.length > 2 ? parseFloat(numbers[2]) : 0;
+
+          const decimal = (deg + (min / 60) + (sec / 3600)) * multiplier;
+          return Number.isFinite(decimal) ? decimal : null;
+        }
+
+        searchBtn.addEventListener('click', () => {
+          const query = searchInput.value.trim();
+          if (!query) return;
+
+          const coords = parseCoordinates(query);
+          if (coords) {
+            map.setCenter(coords);
+            map.setZoom(18);
+          } else {
+            const service = new google.maps.places.PlacesService(map);
+            service.textSearch({ query }, (results, status) => {
+              if (status === google.maps.places.PlacesServiceStatus.OK && results[0]) {
+                map.setCenter(results[0].geometry.location);
+                map.setZoom(18);
+              }
+            });
+          }
+        });
+
+        searchInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            searchBtn.click();
+          }
+        });
+
+        const drawBtn = document.getElementById('btnMapDraw');
+        const finishBtn = document.getElementById('btnMapFinish');
+        const cancelBtn = document.getElementById('btnMapCancel');
+        const dividerBtn = document.getElementById('btnMapDivider');
+        const clearBtn = document.getElementById('btnMapClear');
+
+        clearDrawingState = function() {
+          if (mapClickListener) {
+            google.maps.event.removeListener(mapClickListener);
+            mapClickListener = null;
+          }
+          map.setOptions({ draggableCursor: null });
+
+          activeMapPath = [];
+          mapMarkers.forEach(m => m.setMap(null));
+          mapMarkers = [];
+          if (drawingPolyline) {
+            drawingPolyline.setMap(null);
+            drawingPolyline = null;
+          }
+
+          if (isDrawingDivider) {
+            clearDividerDraft();
+          }
+
+          drawBtn.style.display = 'inline-flex';
+          finishBtn.style.display = 'none';
+          cancelBtn.style.display = 'none';
+        };
+
+        function clearDividerDraft() {
+          isDrawingDivider = false;
+          if (currentMapPolygon) {
+            currentMapPolygon.setOptions({ clickable: true });
+          }
+          currentDividerLatLngs = [];
+          currentDividerMarkers.forEach(m => m.setMap(null));
+          currentDividerMarkers = [];
+          if (dividerLine) {
+            dividerLine.setMap(null);
+            dividerLine = null;
+          }
+          dividerBtn.innerHTML = `<span class="material-icons md-16">add</span> Divider`;
+          dividerBtn.classList.remove('active-tool');
+          map.setOptions({ draggableCursor: null });
+        }
+
+        function clearDivider() {
+          clearDividerDraft();
+          dividerLines.forEach(l => l.setMap(null));
+          dividerLines = [];
+          dividerMarkersList.forEach(arr => arr.forEach(m => m.setMap(null)));
+          dividerMarkersList = [];
+          dividerLatLngsList = [];
+
+          window.__onboardDividersDirect = null;
+          if (currentMapPolygon) {
+            updatePolygonFromMap(currentMapPolygon);
+          }
+        }
+
+        drawBtn.addEventListener('click', () => {
+          if (currentMapPolygon) {
+            currentMapPolygon.setMap(null);
+            currentMapPolygon = null;
+          }
+          setPoints([]);
+          clearDivider();
+          clearDrawingState();
+
+          // Hide badge on reset
+          const badge = document.getElementById('mapDimensionsBadge');
+          if (badge) badge.style.display = 'none';
+
+          // Change cursor and show controls
+          map.setOptions({ draggableCursor: 'crosshair' });
+          drawBtn.style.display = 'none';
+          finishBtn.style.display = 'inline-flex';
+          finishBtn.disabled = true;
+          cancelBtn.style.display = 'inline-flex';
+          clearBtn.style.display = 'none';
+          dividerBtn.style.display = 'none';
+
+          // Click listener to add vertices
+          mapClickListener = map.addListener('click', (event) => {
+            const latLng = event.latLng;
+            
+            if (isDrawingDivider) {
+              addDividerPoint(latLng);
+              return;
+            }
+
+            activeMapPath.push(latLng);
+
+            // Update Polyline
+            if (!drawingPolyline) {
+              drawingPolyline = new google.maps.Polyline({
+                map: map,
+                strokeColor: '#3b82f6',
+                strokeWeight: 3,
+                strokeOpacity: 0.9
+              });
+            }
+            drawingPolyline.setPath(activeMapPath);
+
+            // Enable finish button if we have at least 3 vertices
+            if (activeMapPath.length >= 3) {
+              finishBtn.disabled = false;
+            }
+
+            // Create a custom handle marker for each vertex
+            const marker = new google.maps.Marker({
+              position: latLng,
+              map: map,
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 5,
+                fillColor: '#3b82f6',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2
+              }
+            });
+
+            // If it is the first vertex, click it to automatically finish drawing
+            if (activeMapPath.length === 1) {
+              marker.setIcon({
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: '#10b981', // green
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2
+              });
+              marker.addListener('click', () => {
+                if (activeMapPath.length >= 3) {
+                  finishDrawing();
+                }
+              });
+            }
+            mapMarkers.push(marker);
+          });
+        });
+
+        cancelBtn.addEventListener('click', () => {
+          clearDrawingState();
+          drawBtn.innerHTML = `<span class="material-icons md-16">create</span> Draw`;
+        });
+
+        function finishDrawing() {
+          if (activeMapPath.length < 3) return;
+
+          // Create final editable polygon
+          currentMapPolygon = new google.maps.Polygon({
+            map: map,
+            paths: activeMapPath,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.35,
+            strokeWeight: 2.5,
+            strokeColor: '#3b82f6',
+            clickable: true,
+            editable: true,
+            draggable: true
+          });
+
+          // Clean up drawing state
+          clearDrawingState();
+          drawBtn.innerHTML = `<span class="material-icons md-16">refresh</span> Redraw`;
+          clearBtn.style.display = 'inline-flex';
+          dividerBtn.style.display = 'inline-flex';
+
+          updatePolygonFromMap(currentMapPolygon);
+
+          // Bind edit listeners for drags/edits
+          const path = currentMapPolygon.getPath();
+          google.maps.event.addListener(path, 'set_at', () => updatePolygonFromMap(currentMapPolygon));
+          google.maps.event.addListener(path, 'insert_at', () => updatePolygonFromMap(currentMapPolygon));
+          google.maps.event.addListener(path, 'remove_at', () => updatePolygonFromMap(currentMapPolygon));
+        }
+
+        finishBtn.addEventListener('click', () => {
+          finishDrawing();
+        });
+
+        dividerBtn.addEventListener('click', () => {
+          if (isDrawingDivider) {
+            clearDividerDraft();
+            return;
+          }
+
+          // Start drawing divider
+          isDrawingDivider = true;
+          if (currentMapPolygon) {
+            currentMapPolygon.setOptions({ clickable: false });
+          }
+          currentDividerLatLngs = [];
+          dividerBtn.innerHTML = `<span class="material-icons md-16">close</span> Cancel`;
+          dividerBtn.classList.add('active-tool');
+          map.setOptions({ draggableCursor: 'crosshair' });
+
+          // Re-bind mapClickListener if not already active
+          if (!mapClickListener) {
+            mapClickListener = map.addListener('click', (event) => {
+              const latLng = event.latLng;
+              if (isDrawingDivider) {
+                addDividerPoint(latLng);
+              }
+            });
+          }
+        });
+
+        function addDividerPoint(latLng) {
+          currentDividerLatLngs.push(latLng);
+          
+          const marker = new google.maps.Marker({
+            position: latLng,
+            map: map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 6,
+              fillColor: '#f97316', // orange color for divider
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 2
+            }
+          });
+          currentDividerMarkers.push(marker);
+
+          if (currentDividerLatLngs.length === 1) {
+            // Wait for end point
+          } else if (currentDividerLatLngs.length === 2) {
+            // Complete line!
+            const line = new google.maps.Polyline({
+              map: map,
+              path: currentDividerLatLngs,
+              strokeColor: '#f97316',
+              strokeWeight: 4,
+              strokeOpacity: 0.8
+            });
+
+            dividerLines.push(line);
+            dividerMarkersList.push([...currentDividerMarkers]);
+            dividerLatLngsList.push([...currentDividerLatLngs]);
+
+            isDrawingDivider = false;
+            if (currentMapPolygon) {
+              currentMapPolygon.setOptions({ clickable: true });
+            }
+            currentDividerLatLngs = [];
+            currentDividerMarkers = [];
+            map.setOptions({ draggableCursor: null });
+            
+            // Show divider count on button
+            dividerBtn.innerHTML = `<span class="material-icons md-16">add</span> Divider (${dividerLatLngsList.length})`;
+            dividerBtn.classList.remove('active-tool');
+            
+            // Clean up temporary click listener for divider drawing
+            if (mapClickListener) {
+              google.maps.event.removeListener(mapClickListener);
+              mapClickListener = null;
+            }
+
+            if (currentMapPolygon) {
+              updatePolygonFromMap(currentMapPolygon);
+            }
+          }
+        }
+
+        clearBtn.addEventListener('click', () => {
+          if (currentMapPolygon) {
+            currentMapPolygon.setMap(null);
+            currentMapPolygon = null;
+          }
+          setPoints([]);
+          clearDivider();
+          clearBtn.style.display = 'none';
+          dividerBtn.style.display = 'none';
+          drawBtn.innerHTML = `<span class="material-icons md-16">create</span> Draw`;
+          
+          // Hide badge on reset
+          const badge = document.getElementById('mapDimensionsBadge');
+          if (badge) badge.style.display = 'none';
+        });
+      };
+
+      function updatePolygonFromMap(polygon) {
+        const path = polygon.getPath();
+        const len = path.getLength();
+        if (len < 3) return;
+
+        const coords = [];
+        let centroidLat = 0;
+        let centroidLng = 0;
+
+        for (let i = 0; i < len; i++) {
+          const lat = path.getAt(i).lat();
+          const lng = path.getAt(i).lng();
+          centroidLat += lat;
+          centroidLng += lng;
+          coords.push({ lat, lng });
+        }
+        centroidLat /= len;
+        centroidLng /= len;
+
+        // Equirectangular local plane projection
+        const radLat = (centroidLat * Math.PI) / 180;
+        const metersPerDegLat = 111132;
+        const metersPerDegLng = 111320 * Math.cos(radLat);
+
+        const localPoints = coords.map(c => {
+          const dx = (c.lng - centroidLng) * metersPerDegLng;
+          const dy = (c.lat - centroidLat) * metersPerDegLat;
+          return { x: dx, y: dy };
+        });
+
+        // Compute local bounding box
+        const xs = localPoints.map(p => p.x);
+        const ys = localPoints.map(p => p.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        const drawnLength = Math.max(1, maxX - minX);
+        const drawnWidth = Math.max(1, maxY - minY);
+
+        // Normalize points to fit visualizer [0.08, 0.92] canvas preview
+        const padding = 0.08;
+        const scaleRange = 1 - 2 * padding;
+        const normPoints = localPoints.map(p => ({
+          x: padding + ((p.x - minX) / drawnLength) * scaleRange,
+          y: padding + ((p.y - minY) / drawnWidth) * scaleRange
+        }));
+
+        setPoints(normPoints);
+        document.getElementById('onboardLength').value = Math.round(drawnLength);
+        document.getElementById('onboardWidth').value = Math.round(drawnWidth);
+
+        // Project and save dividers DIRECTLY as centered metric coordinates
+        // Use the EXACT same formula as getScaledPolygon: ((meterX - minX) / drawnLength - 0.5) * len
+        if (typeof dividerLatLngsList !== 'undefined' && dividerLatLngsList && dividerLatLngsList.length > 0) {
+          const len = Math.round(drawnLength);
+          const wid = Math.round(drawnWidth);
+          
+          window.__onboardDividersDirect = dividerLatLngsList.map(pair => {
+            const d1_x = (pair[0].lng() - centroidLng) * metersPerDegLng;
+            const d1_y = (pair[0].lat() - centroidLat) * metersPerDegLat;
+            const d2_x = (pair[1].lng() - centroidLng) * metersPerDegLng;
+            const d2_y = (pair[1].lat() - centroidLat) * metersPerDegLat;
+            
+            return [
+              [
+                ((d1_x - minX) / drawnLength - 0.5) * len,
+                ((d1_y - minY) / drawnWidth - 0.5) * wid
+              ],
+              [
+                ((d2_x - minX) / drawnLength - 0.5) * len,
+                ((d2_y - minY) / drawnWidth - 0.5) * wid
+              ]
+            ];
+          });
+        } else {
+          window.__onboardDividersDirect = null;
+        }
+
+        // Calculate polygon surface area using spherical geometry (geodetic) or Shoelace fallback
+        let area = 0;
+        if (typeof google !== 'undefined' && google.maps && google.maps.geometry && google.maps.geometry.spherical) {
+          area = google.maps.geometry.spherical.computeArea(currentMapPolygon.getPath());
+        } else {
+          const n = localPoints.length;
+          for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            area += localPoints[i].x * localPoints[j].y;
+            area -= localPoints[j].x * localPoints[i].y;
+          }
+          area = Math.abs(area) / 2;
+        }
+
+        // Display realtime dimensions badge
+        const badge = document.getElementById('mapDimensionsBadge');
+        if (badge) {
+          badge.style.display = 'flex';
+          document.getElementById('badgeDims').textContent = `${drawnLength.toFixed(1)}m x ${drawnWidth.toFixed(1)}m`;
+          
+          let areaText = `${Math.round(area).toLocaleString()} m²`;
+          if (area >= 10000) {
+            areaText += ` (${(area / 10000).toFixed(2)} ha)`;
+          }
+          document.getElementById('badgeArea').textContent = areaText;
+        }
+      }
 
       document.getElementById('toolClear').addEventListener('click',()=>setPoints([]));
       document.getElementById('toolImport').addEventListener('click',()=>document.getElementById('boundaryFile').click());
@@ -739,11 +1378,53 @@
         document.getElementById('cameraModel').dispatchEvent(new Event('change', { bubbles: true }));
       }
 
+      function getScaledDividers() {
+        // Direct metric coordinates from Google Maps are already in the correct system
+        if (window.__onboardDividersDirect && window.__onboardDividersDirect.length > 0) {
+          return window.__onboardDividersDirect;
+        }
+        
+        // Legacy 2D Canvas single divider fallback
+        if (window.__onboardDivider && window.__onboardDivider.length > 0) {
+          const list = [window.__onboardDivider];
+          const len = Number(document.getElementById('onboardLength').value) || 100;
+          const wid = Number(document.getElementById('onboardWidth').value) || 76;
+          if (points.length < 3) return [];
+          const xs = points.map(p => p.x), ys = points.map(p => p.y);
+          const mnX = Math.min(...xs), mxX = Math.max(...xs), mnY = Math.min(...ys), mxY = Math.max(...ys);
+          const sw = Math.max(0.0001, mxX - mnX), sh = Math.max(0.0001, mxY - mnY);
+          return list.map(pair => [
+            [((pair[0][0] - mnX) / sw - 0.5) * len, ((pair[0][1] - mnY) / sh - 0.5) * wid],
+            [((pair[1][0] - mnX) / sw - 0.5) * len, ((pair[1][1] - mnY) / sh - 0.5) * wid]
+          ]);
+        }
+        
+        return [];
+      }
+
       // Continue to Plan
       document.getElementById('btnContinueOnboarding').addEventListener('click', () => {
         syncOnboardingToMain();
         const poly = getScaledPolygon();
         if (poly && poly.length >= 3) window.__onboardPolygon = poly;
+        
+        const divs = getScaledDividers();
+        if (divs && divs.length > 0) {
+          window.__onboardDividerScaled = divs;
+        } else {
+          window.__onboardDividerScaled = null;
+        }
+
+        // Debug: verify coordinate alignment
+        if (poly && divs) {
+          const pxs = poly.map(p => p[0]), pys = poly.map(p => p[1]);
+          console.log('[DEBUG] Polygon bounds X:', Math.min(...pxs).toFixed(1), 'to', Math.max(...pxs).toFixed(1));
+          console.log('[DEBUG] Polygon bounds Y:', Math.min(...pys).toFixed(1), 'to', Math.max(...pys).toFixed(1));
+          divs.forEach((d, i) => {
+            console.log(`[DEBUG] Divider ${i}: (${d[0][0].toFixed(1)}, ${d[0][1].toFixed(1)}) → (${d[1][0].toFixed(1)}, ${d[1][1].toFixed(1)})`);
+          });
+        }
+
         document.getElementById('loadingOverlay').classList.remove('hidden');
         document.getElementById('loadingText').textContent = 'Setting up your pond...';
         setTimeout(() => finishOnboarding(), 100);
@@ -753,6 +1434,7 @@
         // Run with current default onboarding inputs
         syncOnboardingToMain();
         window.__onboardPolygon = null;
+        window.__onboardDividerScaled = null;
         document.getElementById('loadingOverlay').classList.remove('hidden');
         document.getElementById('loadingText').textContent = 'Setting up your pond...';
         setTimeout(() => finishOnboarding(), 100);
@@ -763,7 +1445,9 @@
         document.getElementById('rightPanel').style.display = '';
         document.getElementById('bottomPanel').style.display = '';
         document.getElementById('panelToggle').style.display = 'flex';
-        if (window.__onboardDone) window.__onboardDone(window.__onboardPolygon || null);
+        if (window.__onboardDone) {
+          window.__onboardDone(window.__onboardPolygon || null, window.__onboardDividerScaled || null);
+        }
       }
 
       resizeCanvas();

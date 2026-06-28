@@ -12,6 +12,7 @@ const baseSample = [[6, 12], [18, 7], [39, 8], [51, 15], [63, 10], [82, 13], [95
 const state = {
   polygon: [],
   importedPolygon: null,
+  dividers: [],
   activeLayer: "coverage",
   result: null,
   scene: null,
@@ -338,6 +339,18 @@ function optimizeCameraPlacement(polygon, inputs) {
   const grid = buildGrid(polygon, inputs);
   if (!grid.cells.length) throw new Error("Pond shape is too small");
   const candidates = samplePerimeter(polygon, inputs.candidateSpacing / inputs.scale);
+  if (state.dividers && state.dividers.length > 0) {
+    state.dividers.forEach((divider) => {
+      if (divider.length === 2) {
+        // Only place cameras at the endpoints of the divider (corners/intersections) to keep roads clear in real life
+        const p1 = [divider[0][0], divider[0][1]];
+        p1.source = "Divider";
+        const p2 = [divider[1][0], divider[1][1]];
+        p2.source = "Divider";
+        candidates.push(p1, p2);
+      }
+    });
+  }
   const centerArray = buildCenterPoleArray(polygon, grid, inputs);
   const configs = buildCameraConfigs(candidates, polygon, grid, inputs);
   if (!configs.length && !centerArray.length) throw new Error("No visible camera configurations");
@@ -364,7 +377,24 @@ function buildGrid(polygon, inputs) {
   for (let y = box.minY; y <= box.maxY; y += stepWorld) {
     for (let x = box.minX; x <= box.maxX; x += stepWorld) {
       const point = [x + stepWorld / 2, y + stepWorld / 2];
-      if (pointInPolygon(point, polygon)) cells.push({ point, area: stepWorld * stepWorld * inputs.scale * inputs.scale });
+      if (pointInPolygon(point, polygon)) {
+        // Exclude cells that fall on any divider (standard width 4m, so within 2m is land)
+        let onDivider = false;
+        if (state.dividers && state.dividers.length > 0) {
+          for (const divider of state.dividers) {
+            if (divider.length === 2) {
+              const d = distToSegment(point, divider[0], divider[1]);
+              if (d < 2.0) {
+                onDivider = true;
+                break;
+              }
+            }
+          }
+        }
+        if (!onDivider) {
+          cells.push({ point, area: stepWorld * stepWorld * inputs.scale * inputs.scale });
+        }
+      }
     }
   }
   return { cells, stepWorld, box };
@@ -381,7 +411,7 @@ function buildCameraConfigs(candidates, polygon, grid, inputs) {
         pitches.forEach((pitch) => {
           const config = evaluateCameraConfig({
             id: configs.length + 1, position, positionIndex, heading, height, pitch,
-            fov: inputs.fov, range: inputs.range, cost: inputs.cameraCost, source: "Solo",
+            fov: inputs.fov, range: inputs.range, cost: inputs.cameraCost, source: position.source || "Solo",
             polygon, grid, inputs
           });
           if (config) configs.push(config);
@@ -640,6 +670,57 @@ function renderPond(result) {
   boundary.renderOrder = 3; // Render boundary line on top of everything
   state.rootGroup.add(boundary);
 
+  // Render land strip dividers if defined
+  if (state.dividers && state.dividers.length > 0) {
+    // Debug: verify divider coords are inside polygon bounds
+    const rxs = result.polygon.map(p => p[0]), rys = result.polygon.map(p => p[1]);
+    console.log('[3D] Polygon bounds X:', Math.min(...rxs).toFixed(1), 'to', Math.max(...rxs).toFixed(1));
+    console.log('[3D] Polygon bounds Y:', Math.min(...rys).toFixed(1), 'to', Math.max(...rys).toFixed(1));
+    state.dividers.forEach((d, i) => {
+      console.log(`[3D] Divider ${i}: (${d[0][0].toFixed(1)}, ${d[0][1].toFixed(1)}) → (${d[1][0].toFixed(1)}, ${d[1][1].toFixed(1)})`);
+    });
+
+    state.dividers.forEach((divider) => {
+      if (divider.length === 2) {
+        const p1 = divider[0];
+        const p2 = divider[1];
+        const dx = p2[0] - p1[0];
+        const dy = p2[1] - p1[1];
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // In world space: p1 = (p1[0], h, -p1[1]), p2 = (p2[0], h, -p2[1])
+        // World direction = (dx, 0, -dy)
+        // BoxGeometry depth is along local Z
+        // rotation.y = atan2(worldDirX, worldDirZ) = atan2(dx, -dy)
+        const rotY = Math.atan2(dx, -dy);
+
+        // 1. Base soil embankment shoulder (wider base: 5.4m, height: 0.22m)
+        const baseGeo = new THREE.BoxGeometry(5.4, 0.22, dist);
+        const baseMat = new THREE.MeshPhongMaterial({
+          color: document.body.classList.contains("light") ? 0x8d6e63 : 0x4e342e,
+          shininess: 5
+        });
+        const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+        baseMesh.position.set((p1[0] + p2[0]) / 2, 0.11, -(p1[1] + p2[1]) / 2);
+        baseMesh.rotation.y = rotY;
+        baseMesh.renderOrder = 3;
+        state.rootGroup.add(baseMesh);
+
+        // 2. Top gravel/sand road (narrower top: 3.6m, height: 0.13m)
+        const roadGeo = new THREE.BoxGeometry(3.6, 0.13, dist);
+        const roadMat = new THREE.MeshPhongMaterial({
+          color: document.body.classList.contains("light") ? 0xd7ccc8 : 0x8d6e63,
+          shininess: 12
+        });
+        const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+        roadMesh.position.set((p1[0] + p2[0]) / 2, 0.22 + 0.065, -(p1[1] + p2[1]) / 2);
+        roadMesh.rotation.y = rotY;
+        roadMesh.renderOrder = 3;
+        state.rootGroup.add(roadMesh);
+      }
+    });
+  }
+
   const box = bounds(result.polygon);
   const pad = 38;
   const ground = new THREE.Mesh(
@@ -808,7 +889,8 @@ function renderCameras(result) {
     const color = colors[index % colors.length];
     const colorHex = new THREE.Color(color);
     const selected = index === state.selectedCameraIndex;
-    const world = toWorld(camera.position, camera.height);
+    const baseHeight = (camera.source === "Divider") ? 0.175 : 0;
+    const world = toWorld(camera.position, camera.height + baseHeight);
     const forward3D = cameraForward(camera.heading, camera.pitch);
     const headingDir = headingVector(camera.heading);
     const armLength = camera.armLength || 1.8;
@@ -843,7 +925,7 @@ function renderCameras(result) {
       topDisc.position.y = camera.height - 0.09;
       poleGroup.add(topDisc);
       
-      poleGroup.position.set(camera.position[0], 0, -camera.position[1]);
+      poleGroup.position.set(camera.position[0], baseHeight, -camera.position[1]);
       state.rootGroup.add(poleGroup);
     }
 
@@ -937,7 +1019,8 @@ function createSectorMesh(camera, color) {
   const group = new THREE.Group();
   const colorObj = new THREE.Color(color);
 
-  const origin = toWorld(camera.position, camera.height);
+  const baseHeight = (camera.source === "Divider") ? 0.175 : 0;
+  const origin = toWorld(camera.position, camera.height + baseHeight);
   const forward = cameraForward(camera.heading, camera.pitch);
   const right = cameraRight(camera.heading);
   const up = new THREE.Vector3().crossVectors(right, forward).normalize();
@@ -1380,8 +1463,23 @@ function samplePerimeter(polygon, spacing) {
     const count = Math.max(1, Math.floor(length / spacing));
     for (let j = 0; j < count; j += 1) {
       const t = j / count;
-      samples.push([lerp(a[0], b[0], t), lerp(a[1], b[1], t)]);
+      const p = [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+      p.source = "Solo";
+      samples.push(p);
     }
+  }
+  return samples;
+}
+
+function sampleLineSegment(p1, p2, spacing) {
+  const samples = [];
+  const length = dist(p1, p2);
+  const count = Math.max(2, Math.floor(length / spacing));
+  for (let i = 0; i <= count; i += 1) {
+    const t = i / count;
+    const p = [lerp(p1[0], p2[0], t), lerp(p1[1], p2[1], t)];
+    p.source = "Divider";
+    samples.push(p);
   }
   return samples;
 }
@@ -1553,6 +1651,16 @@ function dist(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
 }
 
+function distToSegment(p, p1, p2) {
+  const dx = p2[0] - p1[0];
+  const dy = p2[1] - p1[1];
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return dist(p, p1);
+  let t = ((p[0] - p1[0]) * dx + (p[1] - p1[1]) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return dist(p, [p1[0] + t * dx, p1[1] + t * dy]);
+}
+
 function angleDeg(a, b) {
   return normalizeAngle(radToDeg(Math.atan2(b[1] - a[1], b[0] - a[0])));
 }
@@ -1599,10 +1707,11 @@ function money(value) {
   return `₹${Math.round(value).toLocaleString('en-IN')}`;
 }
 
-function startApp(onboardPolygon) {
+function startApp(onboardPolygon, onboardDividers) {
   if (onboardPolygon && onboardPolygon.length >= 3) {
     state.importedPolygon = onboardPolygon;
   }
+  state.dividers = (onboardDividers && onboardDividers.length > 0) ? onboardDividers : [];
   init();
 }
 
@@ -1611,7 +1720,7 @@ window.runOptimizer = runOptimizer;
 
 // If onboarding is already hidden (page reload, etc.), run directly
 if (!document.getElementById('onboardingOverlay') || document.getElementById('onboardingOverlay').classList.contains('hidden')) {
-  startApp(window.__onboardPolygon || null);
+  startApp(window.__onboardPolygon || null, window.__onboardDividerScaled || null);
 } else {
   // Will be called by onboarding "Continue" button
 }
@@ -1621,7 +1730,7 @@ window.addEventListener("load", function() {
   setTimeout(function() {
     const overlay = document.getElementById('onboardingOverlay');
     if (!state.scene && (!overlay || overlay.classList.contains('hidden'))) {
-      startApp(window.__onboardPolygon || null);
+      startApp(window.__onboardPolygon || null, window.__onboardDividerScaled || null);
     }
   }, 500);
 });

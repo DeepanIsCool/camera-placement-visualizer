@@ -2,6 +2,9 @@ import fs from "node:fs";
 import vm from "node:vm";
 
 const values = {
+  pondLength: "100",
+  pondWidth: "76",
+  shapePreset: "rectangle",
   polygonInput: "",
   restrictedInput: "",
   cameraModel: "0",
@@ -44,13 +47,23 @@ class ElementStub {
     this.rows = 0;
     this.dataset = {};
     this.style = {};
-    this.classList = { add() {}, remove() {} };
+    this.classList = { add() {}, remove() {}, contains(cls) { return cls === 'hidden'; } };
   }
 
   addEventListener() {}
+  closest() {
+    return new ElementStub("closest-stub");
+  }
+  querySelector(sel) {
+    return new ElementStub(sel);
+  }
+  querySelectorAll(sel) {
+    return [];
+  }
   appendChild(child) {
     if (this.id === "cameraModel" && this.value === "") this.value = child.value;
   }
+  dispatchEvent() {}
   setPointerCapture() {}
   click() {}
   getBoundingClientRect() {
@@ -95,6 +108,12 @@ const tabStubs = ["coverage", "blind", "overlap", "pixel", "detectability", "tra
 const context = {
   console,
   Blob: class Blob {},
+  Event: class Event {
+    constructor(type, options) {
+      this.type = type;
+      this.options = options;
+    }
+  },
   URL: { createObjectURL: () => "blob:mock", revokeObjectURL() {} },
   Int32Array,
   Uint8Array,
@@ -132,7 +151,7 @@ vm.runInContext(source, context, { filename: "app.js" });
 
 const status = getElement("#statusBadge").textContent;
 const coverage = getElement("#coverageMetric").textContent;
-const cameraRows = getElement("#cameraTable").innerHTML;
+const cameraRows = getElement("#cameraList").innerHTML;
 
 if (!coverage || coverage === "-") {
   throw new Error(`Smoke test failed. Status: ${status}`);
