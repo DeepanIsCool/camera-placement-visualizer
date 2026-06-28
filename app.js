@@ -26,7 +26,14 @@ const state = {
   waterUniforms: null,
   sunLight: null,
   moonLight: null,
-  sunPointLight: null
+  sunPointLight: null,
+  
+  // Cesium map state
+  cesiumViewer: null,
+  cesiumLatitude: 22.5697,
+  cesiumLongitude: 88.4311,
+  cesiumLocalToGlobal: null,
+  activeView: "local" // "local" or "map"
 };
 
 const ids = [
@@ -39,7 +46,10 @@ const ids = [
   "minimumCameras", "coverageMetric", "blindMetric", "overlapMetric", "pixelMetric", "utilizationMetric",
   "cameraSummary", "cameraList", "costSummary", "costList", "exportJson", "exportCsv", "downloadReport",
   "sceneCaption", "selectedCameraName", "manualHeight", "manualYaw", "manualTilt", "manualFov", "manualRange", "manualArmLength",
-  "timeOfDay", "timeOfDayLabel", "sunAzimuth", "sunElevation", "moonIntensity"
+  "timeOfDay", "timeOfDayLabel", "sunAzimuth", "sunElevation", "moonIntensity",
+  // Cesium UI elements
+  "cesium-container", "viewToggleContainer", "viewLocalBtn", "viewMapBtn", "cesiumCoordsInfo", "cesiumCoordsText",
+  "cesiumLatitude", "cesiumLongitude", "cesiumIonToken"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 
@@ -53,9 +63,35 @@ function init() {
   applyModel(0);
   attachTooltips();
   bindEvents();
+  
+  // Restore Cesium settings from localStorage if available
+  if (typeof localStorage !== 'undefined') {
+    const savedToken = localStorage.getItem("cesium_ion_token") || "";
+    if (savedToken && el.cesiumIonToken) el.cesiumIonToken.value = savedToken;
+    
+    const savedLat = localStorage.getItem("cesium_latitude");
+    const savedLon = localStorage.getItem("cesium_longitude");
+    if (savedLat && el.cesiumLatitude) {
+      state.cesiumLatitude = parseFloat(savedLat);
+      el.cesiumLatitude.value = savedLat;
+    }
+    if (savedLon && el.cesiumLongitude) {
+      state.cesiumLongitude = parseFloat(savedLon);
+      el.cesiumLongitude.value = savedLon;
+    }
+  }
+
   rebuildPolygon();
   init3D();
   runOptimizer();
+
+  // Show view toggle container if onboarding is already complete/hidden
+  const overlay = document.getElementById('onboardingOverlay');
+  if (!overlay || (overlay.classList && typeof overlay.classList.contains === 'function' && overlay.classList.contains('hidden'))) {
+    const toggle = document.getElementById('viewToggleContainer');
+    if (toggle) toggle.style.display = 'flex';
+  }
+
   // Expose runOptimizer globally for settings modal
   window.runOptimizer = runOptimizer;
 }
@@ -78,6 +114,10 @@ function bindEvents() {
       button.classList.add("active");
       state.activeLayer = button.dataset.layer;
       renderHeatmap();
+      // Also update Cesium heatmap layer if map is active
+      if (typeof Cesium !== 'undefined' && state.cesiumViewer && state.activeView === "map") {
+        renderCesiumScene();
+      }
     });
   });
   [el.exportJson, el.exportCsv, el.downloadReport].forEach((button) => { if (button) button.addEventListener("click", handleExport); });
@@ -90,6 +130,52 @@ function bindEvents() {
   ["manualHeight", "manualYaw", "manualTilt", "manualFov", "manualRange", "manualArmLength"].forEach((id) => {
     if (el[id]) el[id].addEventListener("input", () => applyManualCameraEdit());
   });
+
+  // Bind View Switcher
+  if (el.viewLocalBtn) el.viewLocalBtn.addEventListener("click", () => switchView("local"));
+  if (el.viewMapBtn) el.viewMapBtn.addEventListener("click", () => switchView("map"));
+
+  // Bind Location Settings Inputs
+  if (el.cesiumLatitude) {
+    el.cesiumLatitude.addEventListener("input", () => {
+      const val = parseFloat(el.cesiumLatitude.value);
+      if (Number.isFinite(val) && val >= -90 && val <= 90) {
+        state.cesiumLatitude = val;
+        if (typeof localStorage !== 'undefined') localStorage.setItem("cesium_latitude", val);
+        updateCesiumTransform();
+        updateCesiumCoordsDisplay();
+        runOptimizer();
+      }
+    });
+  }
+  if (el.cesiumLongitude) {
+    el.cesiumLongitude.addEventListener("input", () => {
+      const val = parseFloat(el.cesiumLongitude.value);
+      if (Number.isFinite(val) && val >= -180 && val <= 180) {
+        state.cesiumLongitude = val;
+        if (typeof localStorage !== 'undefined') localStorage.setItem("cesium_longitude", val);
+        updateCesiumTransform();
+        updateCesiumCoordsDisplay();
+        runOptimizer();
+      }
+    });
+  }
+  if (el.cesiumIonToken) {
+    el.cesiumIonToken.addEventListener("input", () => {
+      const val = el.cesiumIonToken.value.trim();
+      if (typeof localStorage !== 'undefined') localStorage.setItem("cesium_ion_token", val);
+      if (typeof Cesium !== 'undefined') {
+        Cesium.Ion.defaultAccessToken = val;
+        if (state.cesiumViewer) {
+          state.cesiumViewer.destroy();
+          state.cesiumViewer = null;
+          initCesium();
+          renderCesiumScene();
+        }
+      }
+    });
+  }
+
   window.addEventListener("resize", resize3D);
 }
 
@@ -609,36 +695,55 @@ function buildCostCurve(selected, cellCount, inputs) {
 }
 
 function renderScene(result) {
-  if (!state.rootGroup) return;
-  clearGroup(state.rootGroup);
-  renderPond(result);
-  renderHeatmap();
-  renderCameras(result);
+  if (state.rootGroup) {
+    clearGroup(state.rootGroup);
+    renderPond(result);
+    renderHeatmap();
+    renderCameras(result);
+  }
+
+  if (typeof Cesium !== 'undefined' && state.cesiumViewer && state.activeView === "map") {
+    renderCesiumScene();
+  }
+
   el.sceneCaption.textContent = `${result.selected.length} cameras · ${pct(result.coveragePercent)} coverage · ${result.configsEvaluated.toLocaleString()} configurations`;
 }
 
-function renderPond(result) {
-  const shape = new THREE.Shape();
-  shape.moveTo(result.polygon[0][0], result.polygon[0][1]);
-  for (let i = 1; i < result.polygon.length; i++) {
-    shape.lineTo(result.polygon[i][0], result.polygon[i][1]);
+function getPolygonsList(polygons) {
+  if (!polygons || polygons.length === 0) return [];
+  const first = polygons[0];
+  if (first && typeof first[0] === 'number') {
+    return [polygons];
   }
-  shape.closePath();
-  const pondGeo = new THREE.ShapeGeometry(shape);
+  return polygons;
+}
 
-  const pondMesh = new THREE.Mesh(pondGeo, createWaterMaterial());
-  pondMesh.rotation.x = -Math.PI / 2;
-  pondMesh.position.y = 0.01;
-  pondMesh.renderOrder = 1; // Explicit renderOrder below heatmap (2) and boundary (3)
-  state.rootGroup.add(pondMesh);
+function renderPond(result) {
+  const list = getPolygonsList(result.polygon);
+  list.forEach((poly) => {
+    if (poly.length < 3) return;
+    const shape = new THREE.Shape();
+    shape.moveTo(poly[0][0], poly[0][1]);
+    for (let i = 1; i < poly.length; i++) {
+      shape.lineTo(poly[i][0], poly[i][1]);
+    }
+    shape.closePath();
+    const pondGeo = new THREE.ShapeGeometry(shape);
 
-  const linePoints = result.polygon.concat([result.polygon[0]]).map((point) => new THREE.Vector3(point[0], 0.22, -point[1]));
-  const boundary = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(linePoints),
-    new THREE.LineBasicMaterial({ color: 0xbae6fd, linewidth: 2, transparent: true, opacity: 0.9 })
-  );
-  boundary.renderOrder = 3; // Render boundary line on top of everything
-  state.rootGroup.add(boundary);
+    const pondMesh = new THREE.Mesh(pondGeo, createWaterMaterial());
+    pondMesh.rotation.x = -Math.PI / 2;
+    pondMesh.position.y = 0.01;
+    pondMesh.renderOrder = 1; // Explicit renderOrder below heatmap (2) and boundary (3)
+    state.rootGroup.add(pondMesh);
+
+    const linePoints = poly.concat([poly[0]]).map((point) => new THREE.Vector3(point[0], 0.22, -point[1]));
+    const boundary = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(linePoints),
+      new THREE.LineBasicMaterial({ color: 0xbae6fd, linewidth: 2, transparent: true, opacity: 0.9 })
+    );
+    boundary.renderOrder = 3; // Render boundary line on top of everything
+    state.rootGroup.add(boundary);
+  });
 
   const box = bounds(result.polygon);
   const pad = 38;
@@ -1049,14 +1154,16 @@ function renderOutputs(result) {
       <b class="pill ${camera.redundant ? "bad" : camera.utilization < 0.4 ? "warn" : ""}">${camera.redundant ? "Redundant" : pct(camera.utilization * 100)}</b>
     </article>
   `).join("");
-  el.cameraList.querySelectorAll(".camera-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      state.selectedCameraIndex = Number(card.dataset.cameraIndex);
-      syncManualPanel();
-      renderOutputs(state.result);
-      renderScene(state.result);
+  if (el.cameraList && typeof el.cameraList.querySelectorAll === 'function') {
+    el.cameraList.querySelectorAll(".camera-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        state.selectedCameraIndex = Number(card.dataset.cameraIndex);
+        syncManualPanel();
+        renderOutputs(state.result);
+        renderScene(state.result);
+      });
     });
-  });
+  }
   syncManualPanel();
   if (el.costList) el.costList.innerHTML = result.costCurve.map((row) => `
     <article class="cost-card">
@@ -1136,7 +1243,9 @@ function setSyncedValue(id, nextValue) {
     input.value = round(nextValue, 2);
     const slider = document.querySelector(`[data-slider-for="${id}"]`);
     if (slider) slider.value = round(nextValue, 2);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (typeof Event !== 'undefined') {
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   }
 }
 
@@ -1202,6 +1311,11 @@ function attachTooltips() {
     sunElevation: "Sun height above the horizon.",
     moonIntensity: "Night lighting intensity used for low-light visual review."
   };
+  
+  // Node VM test compatibility: skip if closest is not supported
+  const testInput = el.shapePreset;
+  if (!testInput || typeof testInput.closest !== "function") return;
+
   Object.entries(help).forEach(([id, text]) => {
     const input = el[id];
     if (!input) return;
@@ -1396,48 +1510,88 @@ function lineOfSight(a, b, polygon) {
 }
 
 function pointInPolygon(point, polygon) {
-  let inside = false;
-  const [x, y] = point;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-    const [xi, yi] = polygon[i];
-    const [xj, yj] = polygon[j];
-    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (intersects) inside = !inside;
-  }
-  return inside;
+  if (!polygon || polygon.length === 0) return false;
+  const first = polygon[0];
+  const list = (first && typeof first[0] === 'number') ? [polygon] : polygon;
+
+  return list.some(poly => {
+    let inside = false;
+    const [x, y] = point;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  });
 }
 
 function polygonArea(polygon) {
-  let sum = 0;
-  for (let i = 0; i < polygon.length; i += 1) {
-    const [x1, y1] = polygon[i];
-    const [x2, y2] = polygon[(i + 1) % polygon.length];
-    sum += x1 * y2 - x2 * y1;
+  if (!polygon || polygon.length === 0) return 0;
+  const first = polygon[0];
+  const list = (first && typeof first[0] === 'number') ? [polygon] : polygon;
+  let totalArea = 0;
+  for (const poly of list) {
+    let sum = 0;
+    for (let i = 0; i < poly.length; i += 1) {
+      const [x1, y1] = poly[i];
+      const [x2, y2] = poly[(i + 1) % poly.length];
+      sum += x1 * y2 - x2 * y1;
+    }
+    totalArea += Math.abs(sum / 2);
   }
-  return sum / 2;
+  return totalArea;
 }
 
 function polygonCentroid(polygon) {
+  if (!polygon || polygon.length === 0) return [0, 0];
+  const first = polygon[0];
+  const list = (first && typeof first[0] === 'number') ? [polygon] : polygon;
+  
+  let bestPoly = list[0] || [];
+  let maxArea = -1;
+  for (const poly of list) {
+    const area = polygonArea(poly);
+    if (area > maxArea) {
+      maxArea = area;
+      bestPoly = poly;
+    }
+  }
+
   let areaFactor = 0, cx = 0, cy = 0;
-  for (let i = 0; i < polygon.length; i += 1) {
-    const [x1, y1] = polygon[i];
-    const [x2, y2] = polygon[(i + 1) % polygon.length];
+  for (let i = 0; i < bestPoly.length; i += 1) {
+    const [x1, y1] = bestPoly[i];
+    const [x2, y2] = bestPoly[(i + 1) % bestPoly.length];
     const cross = x1 * y2 - x2 * y1;
     areaFactor += cross;
     cx += (x1 + x2) * cross;
     cy += (y1 + y2) * cross;
   }
   if (Math.abs(areaFactor) < 0.0001) {
-    const total = polygon.reduce((sum, point) => [sum[0] + point[0], sum[1] + point[1]], [0, 0]);
-    return [total[0] / polygon.length, total[1] / polygon.length];
+    if (bestPoly.length === 0) return [0, 0];
+    const total = bestPoly.reduce((sum, point) => [sum[0] + point[0], sum[1] + point[1]], [0, 0]);
+    return [total[0] / bestPoly.length, total[1] / bestPoly.length];
   }
   return [cx / (3 * areaFactor), cy / (3 * areaFactor)];
 }
 
 function bounds(points) {
-  return points.reduce((box, [x, y]) => ({
-    minX: Math.min(box.minX, x), minY: Math.min(box.minY, y), maxX: Math.max(box.maxX, x), maxY: Math.max(box.maxY, y)
-  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+  if (!points || points.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  const first = points[0];
+  const list = (first && typeof first[0] === 'number') ? [points] : points;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const poly of list) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i];
+      minX = Math.min(minX, p[0]);
+      minY = Math.min(minY, p[1]);
+      maxX = Math.max(maxX, p[0]);
+      maxY = Math.max(maxY, p[1]);
+    }
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 function targetPixels(distance, inputs, fov = inputs.fov) {
@@ -1609,8 +1763,11 @@ function startApp(onboardPolygon) {
 window.__onboardDone = startApp;
 window.runOptimizer = runOptimizer;
 
-// If onboarding is already hidden (page reload, etc.), run directly
-if (!document.getElementById('onboardingOverlay') || document.getElementById('onboardingOverlay').classList.contains('hidden')) {
+// If onboarding is already hidden (page reload, etc.) or in test environment, run directly
+const startOverlay = document.getElementById('onboardingOverlay');
+const isTesting = typeof THREE === 'undefined';
+const isHidden = !startOverlay || (startOverlay.classList && typeof startOverlay.classList.contains === 'function' && startOverlay.classList.contains('hidden'));
+if (isTesting || isHidden) {
   startApp(window.__onboardPolygon || null);
 } else {
   // Will be called by onboarding "Continue" button
@@ -1620,8 +1777,373 @@ window.addEventListener("load", function() {
   // Fallback: if onboarding not shown for some reason
   setTimeout(function() {
     const overlay = document.getElementById('onboardingOverlay');
-    if (!state.scene && (!overlay || overlay.classList.contains('hidden'))) {
+    const isHidden = !overlay || (overlay.classList && typeof overlay.classList.contains === 'function' && overlay.classList.contains('hidden'));
+    if (!state.scene && isHidden) {
       startApp(window.__onboardPolygon || null);
     }
   }, 500);
 });
+
+/* ═══════════════════════════════════════════════════
+   Cesium Map View Integration Functions
+   ═══════════════════════════════════════════════════ */
+
+function switchView(viewMode) {
+  if (viewMode === state.activeView) return;
+  state.activeView = viewMode;
+
+  if (viewMode === "map") {
+    // Hide Three.js canvas, Show Cesium container and coordinates display
+    if (el["canvas-container"]) el["canvas-container"].style.display = "none";
+    if (el["cesium-container"]) el["cesium-container"].style.display = "block";
+    if (el.cesiumCoordsInfo) el.cesiumCoordsInfo.style.display = "flex";
+
+    // Toggle active classes on view switcher buttons
+    if (el.viewLocalBtn) el.viewLocalBtn.classList.remove("active");
+    if (el.viewMapBtn) el.viewMapBtn.classList.add("active");
+
+    // Initialize Cesium if needed
+    if (!state.cesiumViewer) {
+      initCesium();
+    } else {
+      updateCesiumTransform();
+      updateCesiumCoordsDisplay();
+      renderCesiumScene();
+      flyToPond(1.5);
+    }
+  } else {
+    // Show Three.js canvas, Hide Cesium container and coordinates display
+    if (el["canvas-container"]) el["canvas-container"].style.display = "block";
+    if (el["cesium-container"]) el["cesium-container"].style.display = "none";
+    if (el.cesiumCoordsInfo) el.cesiumCoordsInfo.style.display = "none";
+
+    // Toggle active classes on view switcher buttons
+    if (el.viewLocalBtn) el.viewLocalBtn.classList.add("active");
+    if (el.viewMapBtn) el.viewMapBtn.classList.remove("active");
+
+    // Recalculate aspect ratio and trigger render on Three.js scene
+    resize3D();
+  }
+}
+
+function initCesium() {
+  if (typeof Cesium === "undefined") return;
+
+  // Load token from localStorage
+  const savedToken = localStorage.getItem("cesium_ion_token") || "";
+  if (savedToken) {
+    Cesium.Ion.defaultAccessToken = savedToken;
+    if (el.cesiumIonToken) el.cesiumIonToken.value = savedToken;
+  }
+
+  // Load coordinates from localStorage
+  const savedLat = localStorage.getItem("cesium_latitude");
+  const savedLon = localStorage.getItem("cesium_longitude");
+  if (savedLat && savedLon) {
+    state.cesiumLatitude = parseFloat(savedLat);
+    state.cesiumLongitude = parseFloat(savedLon);
+    if (el.cesiumLatitude) el.cesiumLatitude.value = savedLat;
+    if (el.cesiumLongitude) el.cesiumLongitude.value = savedLon;
+  } else {
+    if (el.cesiumLatitude) el.cesiumLatitude.value = state.cesiumLatitude;
+    if (el.cesiumLongitude) el.cesiumLongitude.value = state.cesiumLongitude;
+  }
+
+  // Initialize Cesium viewer
+  try {
+    state.cesiumViewer = new Cesium.Viewer("cesium-container", {
+      animation: false,
+      timeline: false,
+      infoBox: false,
+      selectionIndicator: false,
+      geocoder: true,
+      homeButton: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      baseLayerPicker: true,
+      fullscreenButton: false,
+      terrainProvider: Cesium.createWorldTerrain ? Cesium.createWorldTerrain() : undefined
+    });
+    
+    // Enable light shading from sun
+    state.cesiumViewer.scene.globe.enableLighting = true;
+
+    // Track geocoder search box results
+    if (state.cesiumViewer.geocoder) {
+      state.cesiumViewer.geocoder.viewModel.search.afterExecute.addEventListener(() => {
+        // Wait for camera to fly to target searched place, then relocate pond center
+        setTimeout(() => {
+          if (!state.cesiumViewer) return;
+          const cameraPos = state.cesiumViewer.camera.position;
+          const carto = Cesium.Cartographic.fromCartesian(cameraPos);
+          if (carto) {
+            const lat = Cesium.Math.toDegrees(carto.latitude);
+            const lon = Cesium.Math.toDegrees(carto.longitude);
+            
+            state.cesiumLatitude = round(lat, 5);
+            state.cesiumLongitude = round(lon, 5);
+            
+            if (el.cesiumLatitude) el.cesiumLatitude.value = state.cesiumLatitude;
+            if (el.cesiumLongitude) el.cesiumLongitude.value = state.cesiumLongitude;
+            
+            localStorage.setItem("cesium_latitude", state.cesiumLatitude);
+            localStorage.setItem("cesium_longitude", state.cesiumLongitude);
+
+            updateCesiumTransform();
+            updateCesiumCoordsDisplay();
+            runOptimizer();
+          }
+        }, 3000);
+      });
+    }
+
+    // Set up double-click listener to move pond centroid
+    const handler = new Cesium.ScreenSpaceEventHandler(state.cesiumViewer.scene.canvas);
+    handler.setInputAction((movement) => {
+      const cartesian = state.cesiumViewer.scene.camera.pickEllipsoid(movement.position, state.cesiumViewer.scene.globe.ellipsoid);
+      if (cartesian) {
+        const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        const lat = Cesium.Math.toDegrees(cartographic.latitude);
+        const lon = Cesium.Math.toDegrees(cartographic.longitude);
+        
+        state.cesiumLatitude = round(lat, 5);
+        state.cesiumLongitude = round(lon, 5);
+        
+        if (el.cesiumLatitude) el.cesiumLatitude.value = state.cesiumLatitude;
+        if (el.cesiumLongitude) el.cesiumLongitude.value = state.cesiumLongitude;
+        
+        localStorage.setItem("cesium_latitude", state.cesiumLatitude);
+        localStorage.setItem("cesium_longitude", state.cesiumLongitude);
+
+        updateCesiumTransform();
+        updateCesiumCoordsDisplay();
+        runOptimizer();
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+    // Initial setup
+    updateCesiumTransform();
+    updateCesiumCoordsDisplay();
+    renderCesiumScene();
+    flyToPond(0);
+  } catch (err) {
+    console.error("Failed to initialize Cesium Viewer: ", err);
+  }
+}
+
+function updateCesiumTransform() {
+  if (typeof Cesium === "undefined" || !state.cesiumViewer) return;
+  const centerCarto = Cesium.Cartographic.fromDegrees(state.cesiumLongitude, state.cesiumLatitude);
+  const terrainHeight = state.cesiumViewer.scene.globe.getHeight(centerCarto) || 0.0;
+  const centerCartesian = Cesium.Cartesian3.fromDegrees(state.cesiumLongitude, state.cesiumLatitude, terrainHeight);
+  state.cesiumLocalToGlobal = Cesium.Transforms.eastNorthUpToFixedFrame(centerCartesian);
+}
+
+function updateCesiumCoordsDisplay() {
+  if (!el.cesiumCoordsText) return;
+  el.cesiumCoordsText.textContent = `Pond Center: (${state.cesiumLatitude.toFixed(4)}° N, ${state.cesiumLongitude.toFixed(4)}° E)`;
+}
+
+function flyToPond(duration = 2.0) {
+  if (typeof Cesium === "undefined" || !state.cesiumViewer) return;
+  const centerCarto = Cesium.Cartographic.fromDegrees(state.cesiumLongitude, state.cesiumLatitude);
+  const terrainHeight = state.cesiumViewer.scene.globe.getHeight(centerCarto) || 0.0;
+  const targetCartesian = Cesium.Cartesian3.fromDegrees(state.cesiumLongitude, state.cesiumLatitude, terrainHeight + 160);
+
+  state.cesiumViewer.camera.flyTo({
+    destination: targetCartesian,
+    orientation: {
+      heading: Cesium.Math.toRadians(0.0),
+      pitch: Cesium.Math.toRadians(-62.0),
+      roll: 0.0
+    },
+    duration: duration
+  });
+}
+
+function localToCartesian(lx, ly, lz = 0.0) {
+  if (typeof Cesium === "undefined") return null;
+  if (!state.cesiumLocalToGlobal) {
+    return Cesium.Cartesian3.fromDegrees(state.cesiumLongitude, state.cesiumLatitude, lz);
+  }
+  const local = new Cesium.Cartesian3(lx, ly, lz);
+  return Cesium.Matrix4.multiplyByPoint(state.cesiumLocalToGlobal, local, new Cesium.Cartesian3());
+}
+
+function renderCesiumScene() {
+  if (typeof Cesium === "undefined" || !state.cesiumViewer || !state.result) return;
+
+  const viewer = state.cesiumViewer;
+  viewer.entities.removeAll();
+
+  const result = state.result;
+
+  // 1. Draw Pond boundary polygon
+  const list = getPolygonsList(result.polygon);
+  list.forEach((poly, polyIdx) => {
+    if (poly.length < 3) return;
+    const boundaryPoints = poly.map(([lx, ly]) => localToCartesian(lx, ly, 0.1));
+    viewer.entities.add({
+      name: "Pond Boundary " + (polyIdx + 1),
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy(boundaryPoints),
+        material: Cesium.Color.fromCssColorString("rgba(59, 130, 246, 0.15)"),
+        outline: true,
+        outlineColor: Cesium.Color.fromCssColorString("#93c5fd"),
+        outlineWidth: 3.0,
+        classificationType: Cesium.ClassificationType.TERRAIN
+      }
+    });
+  });
+
+  // 2. Draw Heatmap grid cells
+  if (result.grid) {
+    const maxPixel = Math.max(1, ...Array.from(result.maxPixels));
+    const finiteDistances = Array.from(result.minDistance).filter(Number.isFinite);
+    const maxDistance = Math.max(1, ...finiteDistances);
+    const size = result.grid.stepWorld;
+
+    result.grid.cells.forEach((cell, index) => {
+      const colorInt = cellColor(result, index, maxPixel, maxDistance);
+      const colorObj = new THREE.Color(colorInt);
+      const colorHex = `#${colorObj.getHexString()}`;
+      
+      const cx = cell.point[0];
+      const cy = cell.point[1];
+      const s = size * 0.96;
+      
+      const cellCorners = [
+        localToCartesian(cx - s/2, cy - s/2, 0.05),
+        localToCartesian(cx + s/2, cy - s/2, 0.05),
+        localToCartesian(cx + s/2, cy + s/2, 0.05),
+        localToCartesian(cx - s/2, cy + s/2, 0.05)
+      ];
+
+      viewer.entities.add({
+        name: `Heatmap Grid Cell ${index}`,
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy(cellCorners),
+          material: Cesium.Color.fromCssColorString(colorHex).withAlpha(0.42),
+          classificationType: Cesium.ClassificationType.TERRAIN
+        }
+      });
+    });
+  }
+
+  // 3. Draw Camera mounts and 3D coverage frustum cones/pyramids
+  result.selected.forEach((camera, index) => {
+    const colorInt = colors[index % colors.length];
+    const colorObj = new THREE.Color(colorInt);
+    const colorHex = `#${colorObj.getHexString()}`;
+    const isSelected = index === state.selectedCameraIndex;
+    
+    const origX = camera.position[0];
+    const origY = camera.position[1];
+    const origZ = camera.height;
+    
+    const bottomCartesian = localToCartesian(origX, origY, 0.0);
+    const topCartesian = localToCartesian(origX, origY, origZ);
+    
+    // Mount Pole
+    viewer.entities.add({
+      name: `${camera.deploymentId} Pole`,
+      polyline: {
+        positions: [bottomCartesian, topCartesian],
+        width: 4,
+        material: Cesium.Color.fromCssColorString("#64748b")
+      }
+    });
+
+    // Label on top
+    viewer.entities.add({
+      position: localToCartesian(origX, origY, origZ + 2.5),
+      label: {
+        text: String(index + 1),
+        font: "bold 14px Inter, sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.fromCssColorString(colorHex),
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      }
+    });
+
+    // Standoff bracket arm
+    const armLength = camera.armLength || 1.8;
+    const headingRad = degToRad(camera.heading);
+    const armEndX = origX - armLength * Math.cos(headingRad);
+    const armEndY = origY - armLength * Math.sin(headingRad);
+    
+    const armStart = localToCartesian(origX, origY, origZ);
+    const armEnd = localToCartesian(armEndX, armEndY, origZ);
+    
+    viewer.entities.add({
+      name: `${camera.deploymentId} Bracket Arm`,
+      polyline: {
+        positions: [armStart, armEnd],
+        width: 3,
+        material: Cesium.Color.fromCssColorString("#475569")
+      }
+    });
+
+    // Compute Frustum corners
+    const hFovRad = degToRad(camera.fov);
+    const vFovRad = degToRad(clamp(camera.fov * 0.62, 24, 58));
+    const pRad = degToRad(camera.pitch);
+
+    const fwd = {
+      x: Math.cos(pRad) * Math.cos(headingRad),
+      y: Math.cos(pRad) * Math.sin(headingRad),
+      z: Math.sin(pRad)
+    };
+    
+    const rgt = {
+      x: Math.sin(headingRad),
+      y: -Math.cos(headingRad),
+      z: 0
+    };
+    
+    const uP = {
+      x: rgt.y * fwd.z - rgt.z * fwd.y,
+      y: rgt.z * fwd.x - rgt.x * fwd.z,
+      z: rgt.x * fwd.y - rgt.y * fwd.x
+    };
+    
+    const uPLen = Math.hypot(uP.x, uP.y, uP.z);
+    uP.x /= uPLen; uP.y /= uPLen; uP.z /= uPLen;
+
+    const fc = {
+      x: fwd.x * camera.range,
+      y: fwd.y * camera.range,
+      z: fwd.z * camera.range
+    };
+    
+    const halfW = camera.range * Math.tan(hFovRad / 2);
+    const halfH = camera.range * Math.tan(vFovRad / 2);
+
+    const c0 = localToCartesian(origX + fc.x + rgt.x * halfW + uP.x * halfH, origY + fc.y + rgt.y * halfW + uP.y * halfH, origZ + fc.z + rgt.z * halfW + uP.z * halfH);
+    const c1 = localToCartesian(origX + fc.x - rgt.x * halfW + uP.x * halfH, origY + fc.y - rgt.y * halfW + uP.y * halfH, origZ + fc.z - rgt.z * halfW + uP.z * halfH);
+    const c2 = localToCartesian(origX + fc.x - rgt.x * halfW - uP.x * halfH, origY + fc.y - rgt.y * halfW - uP.y * halfH, origZ + fc.z - rgt.z * halfW - uP.z * halfH);
+    const c3 = localToCartesian(origX + fc.x + rgt.x * halfW - uP.x * halfH, origY + fc.y + rgt.y * halfW - uP.y * halfH, origZ + fc.z + rgt.z * halfW - uP.z * halfH);
+
+    const alpha = isSelected ? 0.25 : (camera.source === "Pole array" ? 0.08 : 0.12);
+    const frustumColor = Cesium.Color.fromCssColorString(colorHex).withAlpha(alpha);
+    const frustumOutlineColor = Cesium.Color.fromCssColorString(colorHex).withAlpha(isSelected ? 0.95 : 0.65);
+    const wWidth = isSelected ? 3.0 : 1.2;
+
+    // Draw Wireframe Lines
+    viewer.entities.add({ polyline: { positions: [topCartesian, c0], width: wWidth, material: frustumOutlineColor } });
+    viewer.entities.add({ polyline: { positions: [topCartesian, c1], width: wWidth, material: frustumOutlineColor } });
+    viewer.entities.add({ polyline: { positions: [topCartesian, c2], width: wWidth, material: frustumOutlineColor } });
+    viewer.entities.add({ polyline: { positions: [topCartesian, c3], width: wWidth, material: frustumOutlineColor } });
+    viewer.entities.add({ polyline: { positions: [c0, c1, c2, c3, c0], width: wWidth, material: frustumOutlineColor } });
+
+    // Draw Side Polygon Faces
+    viewer.entities.add({ polygon: { hierarchy: new Cesium.PolygonHierarchy([c0, c1, c2, c3]), material: frustumColor, outline: false } });
+    viewer.entities.add({ polygon: { hierarchy: new Cesium.PolygonHierarchy([topCartesian, c0, c1]), material: frustumColor, outline: false } });
+    viewer.entities.add({ polygon: { hierarchy: new Cesium.PolygonHierarchy([topCartesian, c1, c2]), material: frustumColor, outline: false } });
+    viewer.entities.add({ polygon: { hierarchy: new Cesium.PolygonHierarchy([topCartesian, c2, c3]), material: frustumColor, outline: false } });
+    viewer.entities.add({ polygon: { hierarchy: new Cesium.PolygonHierarchy([topCartesian, c3, c0]), material: frustumColor, outline: false } });
+  });
+}

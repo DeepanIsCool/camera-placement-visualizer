@@ -11,6 +11,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Material+Icons" rel="stylesheet" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+      window.CESIUM_BASE_URL = 'node_modules/cesium/Build/Cesium/';
+    </script>
+    <script src="node_modules/cesium/Build/Cesium/Cesium.js"></script>
+    <link rel="stylesheet" href="node_modules/cesium/Build/Cesium/Widgets/widgets.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -32,31 +37,46 @@
             <h1>Design your pond</h1>
             <p>Draw the pond outline, pick a shape preset, or import boundary points.</p>
           </div>
-          <div class="draw-canvas-wrapper" id="drawCanvasWrapper">
-            <div class="draw-canvas-grid"></div>
-            <canvas id="drawCanvas" width="660" height="400"></canvas>
+          <div class="draw-canvas-wrapper" id="drawCanvasWrapper" style="position: relative;">
+            <div id="onboardMapContainer" style="position: absolute; inset: 0; z-index: 1;"></div>
+            <div class="draw-canvas-grid" id="drawCanvasGrid" style="position: absolute; inset: 0; z-index: 1;"></div>
+            <canvas id="drawCanvas" width="660" height="400" style="position: relative; z-index: 2; display: block; background: transparent;"></canvas>
           </div>
           <div class="draw-toolbar">
             <div class="toolbar-group">
               <button class="btn tool-btn active-tool" id="toolPencil" type="button" title="Pencil Tool"><span class="material-icons md-16">edit</span> Pencil</button>
+              <button class="btn tool-btn" id="toolNavigate" type="button" title="Pan / Zoom Earth Map"><span class="material-icons md-16">explore</span> Navigate Map</button>
               <button class="btn tool-btn" id="toolRect" type="button" title="Rectangle Preset"><span class="material-icons md-16">crop_square</span> Rect</button>
               <button class="btn tool-btn" id="toolOval" type="button" title="Oval Preset"><span class="material-icons md-16">radio_button_unchecked</span> Oval</button>
               <button class="btn tool-btn" id="toolIrregular" type="button" title="Irregular Preset"><span class="material-icons md-16">gesture</span> Irregular</button>
               <button class="btn tool-btn" id="toolField" type="button" title="Field Sample Preset"><span class="material-icons md-16">map</span> Field</button>
             </div>
             <div class="toolbar-group" style="margin-left: auto;">
+              <button class="btn tool-btn primary" id="toolAddPolygon" type="button" title="Add Another Pond Polygon"><span class="material-icons md-16">add</span> Add Pond</button>
               <button class="btn tool-btn secondary" id="toolImport" type="button" title="Import Boundary CSV"><span class="material-icons md-16">upload_file</span> Import</button>
               <button class="btn tool-btn danger" id="toolClear" type="button" title="Clear Canvas"><span class="material-icons md-16">delete_outline</span> Clear</button>
             </div>
-            <span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:8px" id="drawPointCount">0 points</span>
+            <div style="display:flex; flex-direction:column; gap:2px; font-size:11px; color:var(--muted); font-weight:600; margin-left:8px; line-height:1.2;">
+              <span id="drawPointCount">0 points</span>
+              <span id="onboardRealArea" style="display:none; color:var(--blue);">Real Area: --</span>
+              <span id="onboardRealDim" style="display:none; color:var(--teal);">Real Dim: --</span>
+            </div>
           </div>
-          <div class="grid two" style="gap:16px; margin-top: 12px; align-items: flex-end;">
-            <div class="grid two" style="gap:12px">
+          <div style="margin-top: 12px;">
+            <div class="grid two" style="gap:12px; margin-bottom: 12px;">
               <label style="font-size:11px; font-weight:600; color:var(--muted)">Pond length (m)
                 <input id="onboardLength" type="number" min="10" max="500" step="1" value="100" />
               </label>
               <label style="font-size:11px; font-weight:600; color:var(--muted)">Pond width (m)
                 <input id="onboardWidth" type="number" min="10" max="500" step="1" value="76" />
+              </label>
+            </div>
+            <div class="grid two" style="gap:12px; margin-bottom: 12px;">
+              <label style="font-size:11px; font-weight:600; color:var(--muted)">Latitude (°N)
+                <input id="onboardLatitude" type="number" step="0.00001" min="-90" max="90" value="22.5697" />
+              </label>
+              <label style="font-size:11px; font-weight:600; color:var(--muted)">Longitude (°E)
+                <input id="onboardLongitude" type="number" step="0.00001" min="-180" max="180" value="88.4311" />
               </label>
             </div>
             <div class="onboarding-actions" style="margin-top:0">
@@ -166,12 +186,30 @@
 
     <!-- ─── 3D CANVAS ─── -->
     <div id="canvas-container"></div>
+    <div id="cesium-container" style="display: none;"></div>
     <input id="boundaryFile" type="file" accept=".csv,.txt" hidden />
 
     <!-- ─── FLOATING ACTION BUTTONS ─── -->
     <button id="settingsBtn" class="fab settings-btn" type="button" title="Settings">
       <span class="material-icons">settings</span>
     </button>
+
+    <!-- ─── VIEW TOGGLE ─── -->
+    <div id="viewToggleContainer" class="view-toggle-container ui-panel" style="display: none;">
+      <button id="viewLocalBtn" class="view-btn active" type="button" title="Switch to local 3D scene view">
+        <span class="material-icons md-18">view_in_ar</span> Local Scene
+      </button>
+      <button id="viewMapBtn" class="view-btn" type="button" title="Switch to Earth map satellite view">
+        <span class="material-icons md-18">public</span> Earth Map
+      </button>
+    </div>
+
+    <!-- ─── CESIUM COORDINATES INFO ─── -->
+    <div id="cesiumCoordsInfo" class="cesium-coords-info ui-panel" style="display: none;">
+      <span class="material-icons md-14" style="color:var(--blue); vertical-align: middle; margin-right: 4px;">place</span>
+      <span id="cesiumCoordsText" style="margin-right: 8px;">East Kolkata Wetlands (22.5697° N, 88.4311° E)</span>
+      <span style="font-size: 10px; color: var(--muted); border-left: 1px solid var(--line); padding-left: 8px;">Double-click map to relocate pond</span>
+    </div>
 
     <!-- Loading Screen -->
     <div id="loadingOverlay" class="onboarding-overlay hidden" style="z-index:200">
@@ -223,6 +261,20 @@
                   <span class="material-icons md-16">upload_file</span> Import Boundary CSV
                 </button>
               </div>
+            </div>
+            <div class="settings-group" style="margin-top:16px">
+              <div class="settings-group-title">Geographic Location</div>
+              <div class="grid two">
+                <label>Latitude (°N)
+                  <input id="cesiumLatitude" type="number" step="0.0001" min="-90" max="90" value="22.5697" />
+                </label>
+                <label>Longitude (°E)
+                  <input id="cesiumLongitude" type="number" step="0.0001" min="-180" max="180" value="88.4311" />
+                </label>
+              </div>
+              <label style="margin-top:8px">Cesium Ion Access Token
+                <input id="cesiumIonToken" type="text" placeholder="Default public token" style="width:100%" />
+              </label>
             </div>
           </div>
 
@@ -477,7 +529,8 @@
       const step3 = document.getElementById('step3Content');
       const dots = document.querySelectorAll('.step-dot');
 
-      let points = [];
+      let polygonsList = [ [] ];
+      let activePolygonIndex = 0;
       let activeTool = 'pencil';
       let dragIndex = -1;
 
@@ -522,83 +575,187 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (canvas.width === 0 || canvas.height === 0) return;
 
-        if (points.length < 2) {
-          points.forEach(p => {
-            ctx.fillStyle = '#60a5fa';
-            ctx.beginPath();
-            ctx.arc(p.x * canvas.width, p.y * canvas.height, 4, 0, Math.PI*2);
-            ctx.fill();
-          });
-          return;
-        }
+        polygonsList.forEach((poly, index) => {
+          const isActive = index === activePolygonIndex;
+          if (poly.length === 0) return;
 
-        ctx.fillStyle = 'rgba(59,130,246,0.15)';
-        ctx.strokeStyle = '#60a5fa';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height);
-        for (let i = 1; i < points.length; i++) {
-          ctx.lineTo(points[i].x * canvas.width, points[i].y * canvas.height);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+          if (poly.length < 2) {
+            poly.forEach(p => {
+              ctx.fillStyle = isActive ? '#60a5fa' : 'rgba(96, 165, 250, 0.4)';
+              ctx.beginPath();
+              ctx.arc(p.x * canvas.width, p.y * canvas.height, 4, 0, Math.PI*2);
+              ctx.fill();
+            });
+            return;
+          }
 
-        points.forEach(p => {
-          ctx.fillStyle = '#93c5fd';
+          ctx.fillStyle = isActive ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.05)';
+          ctx.strokeStyle = isActive ? '#60a5fa' : 'rgba(96, 165, 250, 0.4)';
+          ctx.lineWidth = isActive ? 2 : 1.5;
           ctx.beginPath();
-          ctx.arc(p.x * canvas.width, p.y * canvas.height, 3.5, 0, Math.PI*2);
+          ctx.moveTo(poly[0].x * canvas.width, poly[0].y * canvas.height);
+          for (let i = 1; i < poly.length; i++) {
+            ctx.lineTo(poly[i].x * canvas.width, poly[i].y * canvas.height);
+          }
+          ctx.closePath();
           ctx.fill();
+          ctx.stroke();
+
+          // Only show dragging handles for the active polygon
+          if (isActive) {
+            poly.forEach(p => {
+              ctx.fillStyle = '#93c5fd';
+              ctx.beginPath();
+              ctx.arc(p.x * canvas.width, p.y * canvas.height, 3.5, 0, Math.PI*2);
+              ctx.fill();
+            });
+          }
         });
       }
 
       function addPoint(x, y) {
         if (canvas.width === 0 || canvas.height === 0) return;
-        points.push({x: x / canvas.width, y: y / canvas.height});
-        pointCountEl.textContent = points.length + ' pts';
+        const activePoly = polygonsList[activePolygonIndex];
+        
+        let lat = null, lon = null;
+        if (typeof Cesium !== 'undefined' && onboardViewer) {
+          const rect = canvas.getBoundingClientRect();
+          const wx = x + rect.left;
+          const wy = y + rect.top;
+          const cartesian = onboardViewer.scene.camera.pickEllipsoid(new Cesium.Cartesian2(wx, wy), onboardViewer.scene.globe.ellipsoid);
+          if (cartesian) {
+            const carto = Cesium.Cartographic.fromCartesian(cartesian);
+            lat = Cesium.Math.toDegrees(carto.latitude);
+            lon = Cesium.Math.toDegrees(carto.longitude);
+          }
+        }
+
+        activePoly.push({
+          x: x / canvas.width,
+          y: y / canvas.height,
+          lat: lat,
+          lon: lon
+        });
+        pointCountEl.textContent = activePoly.length + ' pts';
         redraw();
+        updateRealLifeMetrics();
       }
 
       function findNearVertex(x, y, t=12) {
         if (canvas.width === 0 || canvas.height === 0) return -1;
-        for(let i=0; i<points.length; i++) {
-          const px = points[i].x * canvas.width;
-          const py = points[i].y * canvas.height;
+        const activePoly = polygonsList[activePolygonIndex];
+        for(let i=0; i<activePoly.length; i++) {
+          const px = activePoly[i].x * canvas.width;
+          const py = activePoly[i].y * canvas.height;
           if(Math.hypot(px-x, py-y) < t) return i;
         }
         return -1;
       }
 
       function setPoints(np) {
-        points = np;
-        pointCountEl.textContent = points.length + ' pts';
+        if (typeof Cesium !== 'undefined' && onboardViewer) {
+          const rect = canvas.getBoundingClientRect();
+          np.forEach(p => {
+            if (p.lat == null || p.lon == null) {
+              const px = p.x * canvas.width + rect.left;
+              const py = p.y * canvas.height + rect.top;
+              const cartesian = onboardViewer.scene.camera.pickEllipsoid(new Cesium.Cartesian2(px, py), onboardViewer.scene.globe.ellipsoid);
+              if (cartesian) {
+                const carto = Cesium.Cartographic.fromCartesian(cartesian);
+                p.lat = Cesium.Math.toDegrees(carto.latitude);
+                p.lon = Cesium.Math.toDegrees(carto.longitude);
+              }
+            }
+          });
+        }
+        polygonsList[activePolygonIndex] = np;
+        pointCountEl.textContent = np.length + ' pts';
         redraw();
+        updateRealLifeMetrics();
       }
 
       function getScaledPolygon() {
         const len = Number(document.getElementById('onboardLength').value)||100;
         const wid = Number(document.getElementById('onboardWidth').value)||76;
-        if(points.length<3) return null;
-        const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
-        const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
-        const sw=Math.max(0.0001,mxX-mnX),sh=Math.max(0.0001,mxY-mnY);
-        return points.map(p=>[((p.x-mnX)/sw-0.5)*len,((p.y-mnY)/sh-0.5)*wid]);
+        
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        let hasPoints = false;
+        polygonsList.forEach(poly => {
+          poly.forEach(p => {
+            minX = Math.min(minX, p.x);
+            maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y);
+            maxY = Math.max(maxY, p.y);
+            hasPoints = true;
+          });
+        });
+
+        if (!hasPoints) return null;
+
+        const sw = Math.max(0.0001, maxX - minX);
+        const sh = Math.max(0.0001, maxY - minY);
+
+        const scaledList = polygonsList
+          .filter(poly => poly.length >= 3)
+          .map(poly => {
+            return poly.map(p => [((p.x - minX)/sw - 0.5) * len, ((p.y - minY)/sh - 0.5) * wid]);
+          });
+
+        return scaledList.length === 1 ? scaledList[0] : scaledList;
       }
 
       // Canvas events
       canvas.addEventListener('mousedown', e => {
         const rect = canvas.getBoundingClientRect(), mx=e.clientX-rect.left, my=e.clientY-rect.top;
+        
+        // Select active polygon by clicking near any vertex
+        for (let i = 0; i < polygonsList.length; i++) {
+          const poly = polygonsList[i];
+          for (let j = 0; j < poly.length; j++) {
+            const px = poly[j].x * canvas.width;
+            const py = poly[j].y * canvas.height;
+            if (Math.hypot(px - mx, py - my) < 12) {
+              if (activePolygonIndex !== i) {
+                activePolygonIndex = i;
+                pointCountEl.textContent = poly.length + ' pts';
+                redraw();
+                updateRealLifeMetrics();
+              }
+              if (activeTool !== 'pencil') return;
+              dragIndex = j;
+              return;
+            }
+          }
+        }
+
         if(activeTool!=='pencil') return;
         dragIndex=findNearVertex(mx,my); if(dragIndex>=0) return;
-        if(points.length>=3 && findNearVertex(mx,my,18)===0){redraw();return;}
+        const activePoly = polygonsList[activePolygonIndex];
+        if(activePoly.length>=3 && findNearVertex(mx,my,18)===0){redraw();return;}
         addPoint(mx,my);
       });
       canvas.addEventListener('mousemove', e => {
         const rect = canvas.getBoundingClientRect(), mx=e.clientX-rect.left, my=e.clientY-rect.top;
         if(dragIndex>=0){
           if(canvas.width > 0 && canvas.height > 0) {
-            points[dragIndex]={x: mx / canvas.width, y: my / canvas.height};
+            const activePoly = polygonsList[activePolygonIndex];
+            const p = activePoly[dragIndex];
+            p.x = mx / canvas.width;
+            p.y = my / canvas.height;
+
+            if (typeof Cesium !== 'undefined' && onboardViewer) {
+              const wx = mx + rect.left;
+              const wy = my + rect.top;
+              const cartesian = onboardViewer.scene.camera.pickEllipsoid(new Cesium.Cartesian2(wx, wy), onboardViewer.scene.globe.ellipsoid);
+              if (cartesian) {
+                const carto = Cesium.Cartographic.fromCartesian(cartesian);
+                p.lat = Cesium.Math.toDegrees(carto.latitude);
+                p.lon = Cesium.Math.toDegrees(carto.longitude);
+              }
+            }
+
             redraw();
+            updateRealLifeMetrics();
           }
           return;
         }
@@ -607,10 +764,33 @@
       canvas.addEventListener('mouseup',()=>{dragIndex=-1;});
       canvas.addEventListener('mouseleave',()=>{dragIndex=-1;});
       canvas.addEventListener('touchstart', e => {
-        if(activeTool!=='pencil')return;e.preventDefault();
         const r=canvas.getBoundingClientRect(),mx=e.touches[0].clientX-r.left,my=e.touches[0].clientY-r.top;
+        
+        // Touch near any vertex of any polygon to select it
+        for (let i = 0; i < polygonsList.length; i++) {
+          const poly = polygonsList[i];
+          for (let j = 0; j < poly.length; j++) {
+            const px = poly[j].x * canvas.width;
+            const py = poly[j].y * canvas.height;
+            if (Math.hypot(px - mx, py - my) < 18) {
+              if (activePolygonIndex !== i) {
+                activePolygonIndex = i;
+                pointCountEl.textContent = poly.length + ' pts';
+                redraw();
+                updateRealLifeMetrics();
+              }
+              if (activeTool !== 'pencil') return;
+              dragIndex = j;
+              e.preventDefault();
+              return;
+            }
+          }
+        }
+
+        if(activeTool!=='pencil')return;e.preventDefault();
         dragIndex=findNearVertex(mx,my);if(dragIndex>=0)return;
-        if(points.length>=3&&findNearVertex(mx,my,18)===0)return;
+        const activePoly = polygonsList[activePolygonIndex];
+        if(activePoly.length>=3&&findNearVertex(mx,my,18)===0)return;
         addPoint(mx,my);
       });
       canvas.addEventListener('touchmove', e => {
@@ -620,19 +800,44 @@
           const mx = e.touches[0].clientX-r.left;
           const my = e.touches[0].clientY-r.top;
           if(canvas.width > 0 && canvas.height > 0) {
-            points[dragIndex]={x: mx / canvas.width, y: my / canvas.height};
+            const activePoly = polygonsList[activePolygonIndex];
+            const p = activePoly[dragIndex];
+            p.x = mx / canvas.width;
+            p.y = my / canvas.height;
+
+            if (typeof Cesium !== 'undefined' && onboardViewer) {
+              const wx = mx + r.left;
+              const wy = my + r.top;
+              const cartesian = onboardViewer.scene.camera.pickEllipsoid(new Cesium.Cartesian2(wx, wy), onboardViewer.scene.globe.ellipsoid);
+              if (cartesian) {
+                const carto = Cesium.Cartographic.fromCartesian(cartesian);
+                p.lat = Cesium.Math.toDegrees(carto.latitude);
+                p.lon = Cesium.Math.toDegrees(carto.longitude);
+              }
+            }
+
             redraw();
+            updateRealLifeMetrics();
           }
         }
       });
       canvas.addEventListener('touchend',()=>{dragIndex=-1;});
 
       // Tool buttons
-      const tools={toolPencil:'pencil',toolRect:'rect',toolOval:'oval',toolIrregular:'irregular',toolField:'field'};
+      const tools={toolPencil:'pencil',toolNavigate:'navigate',toolRect:'rect',toolOval:'oval',toolIrregular:'irregular',toolField:'field'};
       Object.entries(tools).forEach(([id,name])=>{
         document.getElementById(id).addEventListener('click',()=>{
           activeTool=name;document.querySelectorAll('.draw-toolbar .btn').forEach(b=>b.classList.remove('active-tool'));
           document.getElementById(id).classList.add('active-tool');
+          
+          if (name === 'navigate') {
+            canvas.style.pointerEvents = 'none';
+            canvas.style.cursor = 'grab';
+          } else {
+            canvas.style.pointerEvents = 'auto';
+            canvas.style.cursor = 'crosshair';
+          }
+
           if(name==='rect'){
             const pts=[{x:0.225,y:0.225},{x:0.775,y:0.225},{x:0.775,y:0.775},{x:0.225,y:0.775}];
             const r=[];
@@ -668,7 +873,16 @@
         });
       });
 
-      document.getElementById('toolClear').addEventListener('click',()=>setPoints([]));
+      document.getElementById('toolAddPolygon').addEventListener('click',()=>{
+        polygonsList.push([]);
+        activePolygonIndex = polygonsList.length - 1;
+        setPoints([]);
+      });
+      document.getElementById('toolClear').addEventListener('click',()=>{
+        polygonsList = [ [] ];
+        activePolygonIndex = 0;
+        setPoints([]);
+      });
       document.getElementById('toolImport').addEventListener('click',()=>document.getElementById('boundaryFile').click());
       document.getElementById('boundaryFile').addEventListener('change',async function(e){
         const file=e.target.files?.[0];if(!file)return;const text=await file.text();
@@ -712,6 +926,8 @@
       function syncOnboardingToMain() {
         document.getElementById('pondLength').value = document.getElementById('onboardLength').value;
         document.getElementById('pondWidth').value = document.getElementById('onboardWidth').value;
+        document.getElementById('cesiumLatitude').value = document.getElementById('onboardLatitude').value;
+        document.getElementById('cesiumLongitude').value = document.getElementById('onboardLongitude').value;
 
         document.getElementById('birdLength').value = document.getElementById('onboardBirdLength').value;
         document.getElementById('birdWidth').value = document.getElementById('onboardBirdWidth').value;
@@ -758,11 +974,253 @@
         setTimeout(() => finishOnboarding(), 100);
       });
 
+      // Onboarding map
+      let onboardViewer = null;
+      function initOnboardMap() {
+        if (typeof Cesium === 'undefined') return;
+        
+        if (typeof localStorage !== 'undefined') {
+          const savedToken = localStorage.getItem("cesium_ion_token") || "";
+          if (savedToken) {
+            Cesium.Ion.defaultAccessToken = savedToken;
+          }
+        }
+
+        try {
+          onboardViewer = new Cesium.Viewer('onboardMapContainer', {
+            animation: false,
+            timeline: false,
+            infoBox: false,
+            selectionIndicator: false,
+            geocoder: true,
+            homeButton: false,
+            sceneModePicker: false,
+            navigationHelpButton: false,
+            baseLayerPicker: true,
+            fullscreenButton: false,
+            terrainProvider: Cesium.createWorldTerrain ? Cesium.createWorldTerrain() : undefined
+          });
+
+          onboardViewer.scene.globe.enableLighting = true;
+
+          let defaultLat = 22.5697;
+          let defaultLon = 88.4311;
+          if (typeof localStorage !== 'undefined') {
+            const savedLat = localStorage.getItem("cesium_latitude");
+            const savedLon = localStorage.getItem("cesium_longitude");
+            if (savedLat) defaultLat = parseFloat(savedLat);
+            if (savedLon) defaultLon = parseFloat(savedLon);
+          }
+
+          const targetCartesian = Cesium.Cartesian3.fromDegrees(defaultLon, defaultLat, 180.0);
+          onboardViewer.camera.setView({
+            destination: targetCartesian,
+            orientation: {
+              heading: Cesium.Math.toRadians(0.0),
+              pitch: Cesium.Math.toRadians(-90.0),
+              roll: 0.0
+            }
+          });
+
+          // Sync map panning/zooming back to inputs
+          onboardViewer.camera.moveEnd.addEventListener(() => {
+            const cameraPos = onboardViewer.camera.position;
+            const carto = Cesium.Cartographic.fromCartesian(cameraPos);
+            if (carto) {
+              const lat = Cesium.Math.toDegrees(carto.latitude);
+              const lon = Cesium.Math.toDegrees(carto.longitude);
+              const latInput = document.getElementById('onboardLatitude');
+              const lonInput = document.getElementById('onboardLongitude');
+              if (latInput && !latInput.dataset.focused) {
+                latInput.value = lat.toFixed(5);
+              }
+              if (lonInput && !lonInput.dataset.focused) {
+                lonInput.value = lon.toFixed(5);
+              }
+              
+              // Recalculate real-life metrics from the new map center/scale
+              updateRealLifeMetrics();
+            }
+          });
+
+          // Sync canvas coordinates to map camera panning/zooming on every frame render
+          onboardViewer.scene.postRender.addEventListener(updateScreenCoordinatesFromMap);
+
+          setupOnboardCoordinateSync();
+        } catch (e) {
+          console.error("Failed to initialize onboarding map: ", e);
+        }
+      }
+
+      function setupOnboardCoordinateSync() {
+        const latInput = document.getElementById('onboardLatitude');
+        const lonInput = document.getElementById('onboardLongitude');
+        if (!latInput || !lonInput) return;
+
+        latInput.addEventListener('focus', () => { latInput.dataset.focused = 'true'; });
+        latInput.addEventListener('blur', () => { delete latInput.dataset.focused; });
+        lonInput.addEventListener('focus', () => { lonInput.dataset.focused = 'true'; });
+        lonInput.addEventListener('blur', () => { delete lonInput.dataset.focused; });
+
+        const updateMapFromInputs = () => {
+          if (onboardViewer) {
+            const lat = parseFloat(latInput.value);
+            const lon = parseFloat(lonInput.value);
+            if (Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(lon) && lon >= -180 && lon <= 180) {
+              const targetCartesian = Cesium.Cartesian3.fromDegrees(lon, lat, 180.0);
+              onboardViewer.camera.setView({
+                destination: targetCartesian,
+                orientation: {
+                  heading: Cesium.Math.toRadians(0.0),
+                  pitch: Cesium.Math.toRadians(-90.0),
+                  roll: 0.0
+                }
+              });
+            }
+          }
+        };
+
+        latInput.addEventListener('input', updateMapFromInputs);
+        lonInput.addEventListener('input', updateMapFromInputs);
+      }
+
+      function updateScreenCoordinatesFromMap() {
+        if (!onboardViewer || canvas.width === 0 || canvas.height === 0) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        let changed = false;
+        polygonsList.forEach(poly => {
+          poly.forEach(p => {
+            if (p.lat != null && p.lon != null) {
+              const cartesian = Cesium.Cartesian3.fromDegrees(p.lon, p.lat);
+              const screenPos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(onboardViewer.scene, cartesian);
+              if (screenPos) {
+                p.x = (screenPos.x - rect.left) / canvas.width;
+                p.y = (screenPos.y - rect.top) / canvas.height;
+                changed = true;
+              }
+            }
+          });
+        });
+        if (changed) {
+          redraw();
+        }
+      }
+
+      function updateRealLifeMetrics() {
+        if (typeof Cesium === 'undefined' || !onboardViewer) {
+          const areaEl = document.getElementById('onboardRealArea');
+          const dimEl = document.getElementById('onboardRealDim');
+          if (areaEl) areaEl.style.display = 'none';
+          if (dimEl) dimEl.style.display = 'none';
+          return;
+        }
+
+        let totalArea = 0;
+        let globalMinX = Infinity, globalMaxX = -Infinity, globalMinY = Infinity, globalMaxY = -Infinity;
+        let validPolys = 0;
+
+        for (let polyIdx = 0; polyIdx < polygonsList.length; polyIdx++) {
+          const poly = polygonsList[polyIdx];
+          if (poly.length < 3) continue;
+
+          const cartesianPoints = [];
+          for (let p of poly) {
+            const px = p.x * canvas.width;
+            const py = p.y * canvas.height;
+            const cartesian = onboardViewer.scene.camera.pickEllipsoid(new Cesium.Cartesian2(px, py), onboardViewer.scene.globe.ellipsoid);
+            if (cartesian) cartesianPoints.push(cartesian);
+          }
+
+          if (cartesianPoints.length < 3) continue;
+          validPolys++;
+
+          // Center of this polygon
+          let sumX = 0, sumY = 0, sumZ = 0;
+          for (let c of cartesianPoints) {
+            sumX += c.x; sumY += c.y; sumZ += c.z;
+          }
+          const center = new Cesium.Cartesian3(sumX / cartesianPoints.length, sumY / cartesianPoints.length, sumZ / cartesianPoints.length);
+
+          const localToGlobal = Cesium.Transforms.eastNorthUpToFixedFrame(center);
+          const globalToLocal = Cesium.Matrix4.inverse(localToGlobal, new Cesium.Matrix4());
+
+          const localPoints = [];
+          for (let c of cartesianPoints) {
+            const local = Cesium.Matrix4.multiplyByPoint(globalToLocal, c, new Cesium.Cartesian3());
+            localPoints.push([local.x, local.y]);
+            globalMinX = Math.min(globalMinX, local.x);
+            globalMaxX = Math.max(globalMaxX, local.x);
+            globalMinY = Math.min(globalMinY, local.y);
+            globalMaxY = Math.max(globalMaxY, local.y);
+          }
+
+          let areaSum = 0;
+          for (let i = 0; i < localPoints.length; i++) {
+            const a = localPoints[i];
+            const b = localPoints[(i + 1) % localPoints.length];
+            areaSum += a[0] * b[1] - b[0] * a[1];
+          }
+          totalArea += Math.abs(areaSum / 2);
+        }
+
+        if (validPolys === 0) {
+          const areaEl = document.getElementById('onboardRealArea');
+          const dimEl = document.getElementById('onboardRealDim');
+          if (areaEl) areaEl.style.display = 'none';
+          if (dimEl) dimEl.style.display = 'none';
+          return;
+        }
+
+        const realLength = Math.round(globalMaxX - globalMinX);
+        const realWidth = Math.round(globalMaxY - globalMinY);
+
+        const areaEl = document.getElementById('onboardRealArea');
+        const dimEl = document.getElementById('onboardRealDim');
+        if (areaEl && dimEl) {
+          areaEl.textContent = `Total Area: ${Math.round(totalArea).toLocaleString()} m²`;
+          dimEl.textContent = `Total Dim: ${realLength}m × ${realWidth}m`;
+          areaEl.style.display = 'block';
+          dimEl.style.display = 'block';
+        }
+
+        // Automatically populate length/width inputs
+        const lenInput = document.getElementById('onboardLength');
+        const widInput = document.getElementById('onboardWidth');
+        if (lenInput && widInput) {
+          lenInput.value = realLength;
+          widInput.value = realWidth;
+        }
+      }
+
+      function syncOnboardLocation() {
+        if (onboardViewer) {
+          const cameraPos = onboardViewer.camera.position;
+          const carto = Cesium.Cartographic.fromCartesian(cameraPos);
+          if (carto) {
+            const lat = Cesium.Math.toDegrees(carto.latitude);
+            const lon = Cesium.Math.toDegrees(carto.longitude);
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem("cesium_latitude", lat.toFixed(5));
+              localStorage.setItem("cesium_longitude", lon.toFixed(5));
+            }
+          }
+        }
+      }
+
       function finishOnboarding() {
+        syncOnboardLocation();
+        if (onboardViewer) {
+          onboardViewer.destroy();
+          onboardViewer = null;
+        }
+
         overlay.classList.add('hidden');
         document.getElementById('rightPanel').style.display = '';
         document.getElementById('bottomPanel').style.display = '';
         document.getElementById('panelToggle').style.display = 'flex';
+        const toggle = document.getElementById('viewToggleContainer');
+        if (toggle) toggle.style.display = 'flex';
         if (window.__onboardDone) window.__onboardDone(window.__onboardPolygon || null);
       }
 
@@ -779,10 +1237,13 @@
         const xs=bp.map(p=>p[0]),ys=bp.map(p=>p[1]);
         const mnX=Math.min(...xs),mxX=Math.max(...xs),mnY=Math.min(...ys),mxY=Math.max(...ys);
         const sw=mxX-mnX,sh=mxY-mnY;
-        points = bp.map(([x,y])=>({x:0.08+((x-mnX)/sw)*0.84,y:0.08+((y-mnY)/sh)*0.84}));
-        pointCountEl.textContent = points.length + ' pts';
+        polygonsList[0] = bp.map(([x,y])=>({x:0.08+((x-mnX)/sw)*0.84,y:0.08+((y-mnY)/sh)*0.84}));
+        pointCountEl.textContent = polygonsList[0].length + ' pts';
       }
       window.__getOnboardPolygon = getScaledPolygon;
+      
+      // Initialize map on step 1 load
+      initOnboardMap();
     })();
     </script>
 

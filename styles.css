@@ -972,3 +972,118 @@ body.light .cost-card { background: rgba(255, 255, 255, 0.7); }
   display: flex; justify-content: center; gap: 10px;
   font-size: 11px; color: var(--muted); font-family: var(--font-mono); margin-top: 3px;
 }
+
+/* ═══════════════════════════════════════════════════
+   Cesium Map Integration & View Switcher
+   ═══════════════════════════════════════════════════ */
+#cesium-container {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: #020617;
+}
+
+.view-toggle-container {
+  position: fixed;
+  top: 16px;
+  left: 70px;
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+}
+
+.view-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease-out);
+}
+
+.view-btn:hover {
+  color: var(--ink);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.view-btn.active {
+  background: var(--blue);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+}
+
+body.light .view-btn.active {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.cesium-coords-info {
+  position: fixed;
+  bottom: 50px;
+  left: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+
+/* Cesium UI Overrides */
+.cesium-viewer-geocoderContainer {
+  margin-top: 16px !important;
+  margin-right: 16px !important;
+}
+
+.cesium-geocoder-input {
+  background-color: var(--panel) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-sm) !important;
+  font-family: inherit !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.cesium-geocoder-searchButton {
+  fill: var(--ink) !important;
+  background-color: var(--panel) !important;
+}
+
+.cesium-viewer-bottom {
+  display: none !important; /* Clean premium screen */
+}
+
+.cesium-button {
+  background-color: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--ink) !important;
+  fill: var(--ink) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.cesium-button:hover {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+.cesium-navigation-help-button {
+  display: none !important;
+}
+

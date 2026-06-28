@@ -2,6 +2,9 @@ import fs from "node:fs";
 import vm from "node:vm";
 
 const values = {
+  pondLength: "100",
+  pondWidth: "76",
+  shapePreset: "field",
   polygonInput: "",
   restrictedInput: "",
   cameraModel: "0",
@@ -130,9 +133,9 @@ vm.createContext(context);
 const source = fs.readFileSync(new URL("./app.js", import.meta.url), "utf8");
 vm.runInContext(source, context, { filename: "app.js" });
 
-const status = getElement("#statusBadge").textContent;
+const status = getElement("#runState").textContent;
 const coverage = getElement("#coverageMetric").textContent;
-const cameraRows = getElement("#cameraTable").innerHTML;
+const cameraRows = getElement("#cameraList").innerHTML;
 
 if (!coverage || coverage === "-") {
   throw new Error(`Smoke test failed. Status: ${status}`);
