@@ -552,6 +552,15 @@ function greedySelect(configs, cellCount, inputs, initialSelected = []) {
       }
     }
     if (!best) break;
+
+    // Early exit if the marginal coverage added by this camera is less than 2% of the pond area
+    // (only applies if the user hasn't set a hard camera count limit)
+    if (!inputs.cameraCount && selected.length > 0) {
+      const marginalCoverage = bestNewCount / cellCount;
+      if (marginalCoverage < 0.02) {
+        break;
+      }
+    }
     usedPositions.add(best.positionIndex);
     for (const index of best.covered) {
       if (coveredCounts[index] === 0) coveredCells += 1;
